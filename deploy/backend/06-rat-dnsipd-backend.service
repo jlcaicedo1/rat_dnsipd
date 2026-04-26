@@ -1,0 +1,22 @@
+[Unit]
+Description=rat_dnsipd Backend
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ratapp
+Group=ratapp
+WorkingDirectory=/app/rat_dnsipd/current/backend
+EnvironmentFile=/app/rat_dnsipd/shared/env/backend.env
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=768
+ExecStart=/usr/bin/node dist/main.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rat-dnsipd-backend
+
+[Install]
+WantedBy=multi-user.target

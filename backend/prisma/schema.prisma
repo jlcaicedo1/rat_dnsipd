@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int              @id @default(autoincrement())
+  nombre         String
+  email          String           @unique
+  username       String           @unique
+  passwordHash   String
+  role           RoleCode
+  activo         Boolean          @default(true)
+  dependenciaId  Int?
+  subdireccionId Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  dependencia    OrgDependencia?  @relation(fields: [dependenciaId], references: [id])
+  subdireccion   OrgSubdireccion? @relation(fields: [subdireccionId], references: [id])
+}
+
+model Catalogo {
+  id                              Int                @id @default(autoincrement())
+  tipo                            String
+  codigo                          String
+  nombre                          String
+  descripcion                     String?
+  activo                          Boolean            @default(true)
+  actividadVersionesBaseLicitud   ActividadVersion[]
+
+  @@unique([tipo, codigo])
+}
+
+model Rat {
+  id                   Int                    @id @default(autoincrement())
+  codigo               String                 @unique
+  nombre               String
+  descripcion          String?
+  estadoGeneral        String                 @default("EN_CONSTRUCCION")
+  fechaProximaRevision DateTime?
+  dependenciaId        Int
+  subdireccionId       Int?
+  actividades          ActividadTratamiento[]
+  dependencia          OrgDependencia         @relation(fields: [dependenciaId], references: [id])
+  subdireccion         OrgSubdireccion?       @relation(fields: [subdireccionId], references: [id])
+  versiones            RatVersion[]
+}
+
+model RatVersion {
+  id            Int     @id @default(autoincrement())
+  numeroVersion String
+  estadoVersion String
+  motivoVersion String?
+  ratId         Int
+  rat           Rat     @relation(fields: [ratId], references: [id])
+
+  @@unique([ratId, numeroVersion])
+}
+
+model ActividadTratamiento {
+  id            Int                @id @default(autoincrement())
+  codigo        String
+  nombre        String
+  descripcion   String?
+  ratId         Int
+  estadoGeneral String             @default("EN_CONSTRUCCION")
+  rat           Rat                @relation(fields: [ratId], references: [id])
+  versiones     ActividadVersion[]
+
+  @@unique([ratId, codigo])
+}
+
+model ActividadVersion {
+  id                   Int                   @id @default(autoincrement())
+  numeroVersion        String
+  estadoVersion        String                @default("BORRADOR")
+  finalidad            String?
+  plazoConservacion    String?
+  actividadId          Int
+  baseLicitudId        Int?
+  esGranEscala         Boolean               @default(false)
+  fechaProximaRevision DateTime?
+  motivoActualizacion  String?
+  observacionLicitud   String?
+  puntajeMtge          Float?
+  requiereEipd         Boolean               @default(false)
+  activos              ActividadActivo[]
+  actividad            ActividadTratamiento  @relation(fields: [actividadId], references: [id])
+  baseLicitud          Catalogo?             @relation(fields: [baseLicitudId], references: [id])
+  eipd                 Eipd?
+  mtgeEvaluacion       MtgeEvaluacion?
+  observacionesRevision RevisionObservacion[]
+  riesgos              RiesgoEvaluacion[]
+
+  @@unique([actividadId, numeroVersion])
+}
+
+model ActivoInformacion {
+  id          Int               @id @default(autoincrement())
+  codigo      String            @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean           @default(true)
+  actividades ActividadActivo[]
+}
+
+model ActividadActivo {
+  id                 Int               @id @default(autoincrement())
+  actividadVersionId Int
+  activoId           Int
+  actividadVersion   ActividadVersion  @relation(fields: [actividadVersionId], references: [id])
+  activo             ActivoInformacion @relation(fields: [activoId], references: [id])
+
+  @@unique([actividadVersionId, activoId])
+}
+
+model MtgeEvaluacion {
+  id                  Int              @id @default(autoincrement())
+  actividadVersionId  Int              @unique
+  puntajeTotal        Float
+  esGranEscala        Boolean
+  alcanceGeografico   Int
+  createdAt           DateTime         @default(now())
+  duracionTratamiento Int
+  observaciones       String?
+  updatedAt           DateTime         @updatedAt
+  variedadCategorias  Int
+  versionMetodologia  String           @default("MTGE-1.0")
+  volumenTitulares    Int
+  actividadVersion    ActividadVersion @relation(fields: [actividadVersionId], references: [id])
+}
+
+model RiesgoEvaluacion {
+  id                   Int              @id @default(autoincrement())
+  actividadVersionId   Int
+  nivelRiesgo          String
+  controlesExistentes  String?
+  createdAt            DateTime         @default(now())
+  descripcion          String?
+  estado               String           @default("IDENTIFICADO")
+  impacto              Int
+  impactoResidual      Int?
+  nivelResidual        String?
+  nombre               String
+  probabilidad         Int
+  probabilidadResidual Int?
+  tratamiento          String?
+  updatedAt            DateTime         @updatedAt
+  actividadVersion     ActividadVersion @relation(fields: [actividadVersionId], references: [id])
+}
+
+model RevisionObservacion {
+  id                    Int              @id @default(autoincrement())
+  actividadVersionId    Int
+  comentario            String
+  campo                 String?
+  autor                 String?
+  fecha                 DateTime         @default(now())
+  atendida              Boolean          @default(false)
+  comentarioSubsanacion String?
+  fechaSubsanacion      DateTime?
+  subsanadoPor          String?
+  actividadVersion      ActividadVersion @relation(fields: [actividadVersionId], references: [id])
+}
+
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  modulo         String
+  entidad        String
+  accion         String
+  fecha          DateTime @default(now())
+  actor          String   @default("system")
+  actorRole      String?
+  descripcion    String?
+  detalleAntes   Json?
+  detalleDespues Json?
+  entidadId      String?
+  metadata       Json?
+}
+
+model Eipd {
+  id                     Int              @id @default(autoincrement())
+  codigo                 String           @unique
+  actividadVersionId     Int              @unique
+  conclusion             String?
+  createdAt              DateTime         @default(now())
+  estado                 String           @default("PRE_EVALUACION")
+  fechaEvaluacion        DateTime?
+  medidasMitigacion      String?
+  requiereConsultaPrevia Boolean          @default(false)
+  resumen                String?
+  updatedAt              DateTime         @updatedAt
+  actividadVersion       ActividadVersion @relation(fields: [actividadVersionId], references: [id])
+}
+
+model OrgDependencia {
+  id              Int               @id @default(autoincrement())
+  nombre          String
+  sigla           String?
+  responsable     String?
+  activo          Boolean           @default(true)
+  tipoProcesoId   Int
+  descripcion     String?
+  tipoProceso     OrgTipoProceso    @relation(fields: [tipoProcesoId], references: [id])
+  subdirecciones  OrgSubdireccion[]
+  rats            Rat[]
+  users           User[]
+}
+
+model OrgSubdireccion {
+  id             Int            @id @default(autoincrement())
+  nombre         String
+  sigla          String?
+  responsable    String?
+  activo         Boolean        @default(true)
+  dependenciaId  Int
+  descripcion    String?
+  dependencia    OrgDependencia @relation(fields: [dependenciaId], references: [id])
+  rats           Rat[]
+  users          User[]
+}
+
+model OrgTipoProceso {
+  id             Int              @id @default(autoincrement())
+  nombre         String
+  descripcion    String?
+  activo         Boolean          @default(true)
+  dependencias   OrgDependencia[]
+}
+
+enum RoleCode {
+  ADMIN
+  RESPONSABLE_DEPENDENCIA
+  RESPONSABLE_SUBDIRECCION
+  EDITOR_OPERATIVO
+  REVISOR_PROTECCION_DATOS
+  REVISOR_SEGURIDAD
+  AUDITOR
+}

@@ -1,0 +1,25 @@
+import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+
+export class CreateSubdireccionDto {
+  @IsInt()
+  dependenciaId!: number;
+
+  @IsString()
+  nombre!: string;
+
+  @IsOptional()
+  @IsString()
+  sigla?: string;
+
+  @IsOptional()
+  @IsString()
+  responsable?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}

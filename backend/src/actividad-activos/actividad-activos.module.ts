@@ -1,0 +1,11 @@
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module';
+import { ActividadActivosController } from './actividad-activos.controller';
+import { ActividadActivosService } from './actividad-activos.service';
+
+@Module({
+  imports: [PrismaModule],
+  controllers: [ActividadActivosController],
+  providers: [ActividadActivosService],
+})
+export class ActividadActivosModule {}

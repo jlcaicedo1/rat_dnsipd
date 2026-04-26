@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: rat_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rat_db
+      POSTGRES_USER: dnsipd
+      POSTGRES_PASSWORD: dnsipd
+    ports:
+      - "5432:5432"
+    volumes:
+      - rat_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  rat_postgres_data:

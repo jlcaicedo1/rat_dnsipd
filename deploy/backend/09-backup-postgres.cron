@@ -1,0 +1,1 @@
+0 2 * * * root export PGPASSWORD='CAMBIAR_PASSWORD'; /app/rat_dnsipd/scripts/backup-postgres.sh >> /var/log/rat-postgres-backup.log 2>&1

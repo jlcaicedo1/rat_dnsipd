@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.vite/
+.env
+.env.local
+.env.*.local
+*.log
+*.tsbuildinfo
+.Rhistory
+backend/node_modules/
+frontend/node_modules/
+backend/dist/
+frontend/dist/
+backend/prisma/dev.db
