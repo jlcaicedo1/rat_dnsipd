@@ -1,0 +1,609 @@
+{
+  "codigo": "IESS",
+  "nombre": "Instituto Ecuatoriano de Seguridad Social (IESS)",
+  "tipo": "ENTIDAD",
+  "orden": 0,
+  "esContenedorRat": false,
+  "children": [
+    {
+      "codigo": "ORGANOS_GOBERNANTES",
+      "nombre": "Organos gobernantes",
+      "tipo": "BLOQUE",
+      "orden": 1,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "CONSEJO_DIRECTIVO",
+          "nombre": "Consejo Directivo",
+          "tipo": "ORGANO_GOBIERNO",
+          "orden": 1,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "PRESIDENCIA_CONSEJO_DIRECTIVO",
+          "nombre": "Presidencia del Consejo Directivo",
+          "tipo": "ORGANO_GOBIERNO",
+          "orden": 2,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIRECCION_GENERAL",
+          "nombre": "Direccion General",
+          "tipo": "DIRECCION_GENERAL",
+          "orden": 3,
+          "esContenedorRat": true
+        }
+      ]
+    },
+    {
+      "codigo": "ASESORIA_CONSEJO_DIRECTIVO",
+      "nombre": "Procesos adjetivos de asesoria dependientes del Consejo Directivo",
+      "tipo": "BLOQUE",
+      "orden": 2,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "COMISION_NACIONAL_APELACIONES",
+          "nombre": "Comision Nacional de Apelaciones",
+          "tipo": "UNIDAD",
+          "orden": 1,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "PROSECRETARIA_CONSEJO_DIRECTIVO",
+          "nombre": "Prosecretaria del Consejo Directivo",
+          "tipo": "UNIDAD",
+          "orden": 2,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIR_ACTUARIAL_INVESTIGACION_ESTADISTICA",
+          "nombre": "Direccion Actuarial, de Investigacion y Estadistica",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 3,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIR_SERVICIOS_ATENCION_CIUDADANO",
+          "nombre": "Direccion Nacional de Servicios de Atencion al Ciudadano",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 4,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIR_COMUNICACION_SOCIAL",
+          "nombre": "Direccion Nacional de Comunicacion Social",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 5,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIR_RIESGOS_INSTITUCIONALES",
+          "nombre": "Direccion Nacional de Riesgos Institucionales",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 6,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_RIESGO_FINANCIERO",
+              "nombre": "Subdireccion Nacional de Riesgo Financiero",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_RIESGO_OPERATIVO",
+              "nombre": "Subdireccion Nacional de Riesgo Operativo",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_SEGURIDAD_INFORMACION",
+          "nombre": "Direccion Nacional de Seguridad de la Informacion",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 7,
+          "esContenedorRat": true
+        }
+      ]
+    },
+    {
+      "codigo": "ASESORIA_DIRECCION_GENERAL",
+      "nombre": "Procesos adjetivos de asesoria dependientes de la Direccion General",
+      "tipo": "BLOQUE",
+      "orden": 3,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "AUDITORIA_INTERNA",
+          "nombre": "Auditoria Interna",
+          "tipo": "UNIDAD",
+          "orden": 1,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "PROCURADURIA_GENERAL",
+          "nombre": "Procuraduria General",
+          "tipo": "UNIDAD",
+          "orden": 2,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_PATROCINIO",
+              "nombre": "Subdireccion Nacional de Patrocinio",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_ASESORIA_LEGAL",
+              "nombre": "Subdireccion Nacional de Asesoria Legal",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_PLANIFICACION",
+          "nombre": "Direccion Nacional de Planificacion",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 3,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "DIR_PROCESOS",
+          "nombre": "Direccion Nacional de Procesos",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 4,
+          "esContenedorRat": true
+        }
+      ]
+    },
+    {
+      "codigo": "SUBDIRECCION_GENERAL_BLOQUE",
+      "nombre": "Subdireccion General dependiente de la Direccion General",
+      "tipo": "BLOQUE",
+      "orden": 4,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "SUBDIRECCION_GENERAL",
+          "nombre": "Subdireccion General",
+          "tipo": "UNIDAD",
+          "orden": 1,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "SUBDIR_CONTROL_TECNICO_GENERAL",
+          "nombre": "Subdireccion de Control Tecnico",
+          "tipo": "UNIDAD",
+          "orden": 2,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "SUBDIR_SEGUIMIENTO_EVALUACION",
+          "nombre": "Subdireccion de Seguimiento y Evaluacion",
+          "tipo": "UNIDAD",
+          "orden": 3,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "SUBDIR_GESTION_CONTROL_SSC",
+          "nombre": "Subdireccion de Gestion y Control del Seguro Social Campesino",
+          "tipo": "UNIDAD",
+          "orden": 4,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "SUBDIR_GESTION_CONTROL_SRT",
+          "nombre": "Subdireccion de Gestion y Control del Seguro de Riesgos del Trabajo",
+          "tipo": "UNIDAD",
+          "orden": 5,
+          "esContenedorRat": true
+        },
+        {
+          "codigo": "SUBDIR_GESTION_CONTROL_PENSIONES",
+          "nombre": "Subdireccion de Gestion y Control del Sistema de Pensiones",
+          "tipo": "UNIDAD",
+          "orden": 6,
+          "esContenedorRat": true
+        }
+      ]
+    },
+    {
+      "codigo": "PROCESOS_SUSTANTIVOS",
+      "nombre": "Procesos sustantivos dependientes de la Direccion General",
+      "tipo": "BLOQUE",
+      "orden": 5,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "DIR_AFILIACION_COBERTURA",
+          "nombre": "Direccion Nacional de Afiliacion y Cobertura",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 1,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_AFILIACION_COBERTURA_GI",
+              "nombre": "Subdireccion de Afiliacion, Cobertura y Gestion de la Informacion",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_CONTROL_TECNICO_AFILIACION",
+              "nombre": "Subdireccion de Control Tecnico",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_RECAUDACION_CARTERA",
+          "nombre": "Direccion Nacional de Recaudacion y Gestion de Cartera",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 2,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_RECAUDACION",
+              "nombre": "Subdireccion de Recaudacion",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_GESTION_CARTERA",
+              "nombre": "Subdireccion de Gestion de Cartera",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_SG_SALUD_INDIVIDUAL_FAMILIAR",
+          "nombre": "Direccion del Seguro General de Salud Individual y Familiar",
+          "tipo": "DIRECCION",
+          "orden": 3,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_ASEGURAMIENTO_SALUD",
+              "nombre": "Subdireccion de Aseguramiento del Seguro de Salud",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_PROVISION_SERVICIOS_SALUD",
+              "nombre": "Subdireccion de Provision de Servicios de Salud",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_GARANTIA_CALIDAD_SERVICIOS_SALUD",
+              "nombre": "Subdireccion de Garantia de la Calidad de los Servicios del Seguro de Salud",
+              "tipo": "SUBDIRECCION",
+              "orden": 3,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_VIGILANCIA_GI_SALUD",
+              "nombre": "Subdireccion de Vigilancia y Gestion de la Informacion del Seguro de Salud",
+              "tipo": "SUBDIRECCION",
+              "orden": 4,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_FINANCIERA_SALUD",
+              "nombre": "Subdireccion Financiera del Seguro de Salud",
+              "tipo": "SUBDIRECCION",
+              "orden": 5,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_SEGURO_SOCIAL_CAMPESINO",
+          "nombre": "Direccion del Seguro Social Campesino",
+          "tipo": "DIRECCION",
+          "orden": 4,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_GESTION_CONTROL_SSC_DIRECCION",
+              "nombre": "Subdireccion de Gestion y Control del Seguro Social Campesino",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_PRESTACIONES_SALUD_SSC",
+              "nombre": "Subdireccion de Prestaciones de Salud del Seguro Social Campesino",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_FINANCIERA_SSC",
+              "nombre": "Subdireccion Financiera del Seguro Social Campesino",
+              "tipo": "SUBDIRECCION",
+              "orden": 3,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_RIESGOS_TRABAJO",
+          "nombre": "Direccion del Seguro General de Riesgos del Trabajo",
+          "tipo": "DIRECCION",
+          "orden": 5,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_GESTION_CONTROL_SRT_DIRECCION",
+              "nombre": "Subdireccion de Gestion y Control del Seguro de Riesgos del Trabajo",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_FINANCIERA_SRT",
+              "nombre": "Subdireccion Financiera del Seguro de Riesgos del Trabajo",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_SISTEMA_PENSIONES",
+          "nombre": "Direccion del Sistema de Pensiones",
+          "tipo": "DIRECCION",
+          "orden": 6,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_GESTION_CONTROL_PENSIONES_DIRECCION",
+              "nombre": "Subdireccion de Gestion y Control del Sistema de Pensiones",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_FINANCIERA_PENSIONES",
+              "nombre": "Subdireccion Financiera del Sistema de Pensiones",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_FONDOS_TERCEROS_SEGURO_DESEMPLEO",
+          "nombre": "Direccion Nacional de Fondos de Terceros y Seguro de Desempleo",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 7,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_SEGURO_DESEMPLEO",
+              "nombre": "Subdireccion del Seguro de Desempleo",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_FONDOS_TERCEROS",
+              "nombre": "Subdireccion de Fondos de Terceros",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "codigo": "PROCESOS_APOYO",
+      "nombre": "Procesos adjetivos de apoyo dependientes de la Direccion General",
+      "tipo": "BLOQUE",
+      "orden": 6,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "DIR_GESTION_FINANCIERA",
+          "nombre": "Direccion Nacional de Gestion Financiera",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 1,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_CONSOLIDACION_PRESUPUESTARIA",
+              "nombre": "Subdireccion de Consolidacion Presupuestaria",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_CONTABILIDAD",
+              "nombre": "Subdireccion de Contabilidad",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_TRANSFERENCIAS_PAGOS",
+              "nombre": "Subdireccion de Transferencias y Pagos",
+              "tipo": "SUBDIRECCION",
+              "orden": 3,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_SUPERVISION_RENTABILIDAD",
+              "nombre": "Subdireccion de Supervision de la Rentabilidad de los Fondos Previsionales",
+              "tipo": "SUBDIRECCION",
+              "orden": 4,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_TECNOLOGIAS_INFORMACION",
+          "nombre": "Direccion Nacional de Tecnologias de la Informacion",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 2,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_INFRAESTRUCTURA_TI",
+              "nombre": "Subdireccion de Infraestructura de Tecnologias de la Informacion",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_DESARROLLO_INFORMATICO",
+              "nombre": "Subdireccion de Desarrollo Informatico",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_ARQUITECTURA_SOLUCIONES",
+              "nombre": "Subdireccion de Arquitectura y Soluciones",
+              "tipo": "SUBDIRECCION",
+              "orden": 3,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_SEGURIDAD_INFORMATICA",
+              "nombre": "Subdireccion de Seguridad Informatica",
+              "tipo": "SUBDIRECCION",
+              "orden": 4,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_SERVICIOS_CORPORATIVOS",
+          "nombre": "Direccion Nacional de Servicios Corporativos",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 3,
+          "esContenedorRat": true,
+          "children": [
+            {
+              "codigo": "SUBDIR_ADMINISTRATIVA",
+              "nombre": "Subdireccion Administrativa",
+              "tipo": "SUBDIRECCION",
+              "orden": 1,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_COMPRAS_PUBLICAS",
+              "nombre": "Subdireccion de Compras Publicas",
+              "tipo": "SUBDIRECCION",
+              "orden": 2,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_INFRAESTRUCTURA_EQUIPAMIENTO",
+              "nombre": "Subdireccion de Infraestructura y Equipamiento",
+              "tipo": "SUBDIRECCION",
+              "orden": 3,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_TALENTO_HUMANO",
+              "nombre": "Subdireccion de Gestion de Talento Humano",
+              "tipo": "SUBDIRECCION",
+              "orden": 4,
+              "esContenedorRat": false
+            },
+            {
+              "codigo": "SUBDIR_GESTION_DOCUMENTAL",
+              "nombre": "Subdireccion de Gestion Documental",
+              "tipo": "SUBDIRECCION",
+              "orden": 5,
+              "esContenedorRat": false
+            }
+          ]
+        },
+        {
+          "codigo": "DIR_COOPERACION_RELACIONES_INTERNACIONALES",
+          "nombre": "Direccion Nacional de Cooperacion y Relaciones Internacionales",
+          "tipo": "DIRECCION_NACIONAL",
+          "orden": 4,
+          "esContenedorRat": true
+        }
+      ]
+    },
+    {
+      "codigo": "COMITES_COLEGIADOS",
+      "nombre": "Organos colegiados y comites",
+      "tipo": "BLOQUE",
+      "orden": 7,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "COMITE_AIR",
+          "nombre": "Comite de Administracion Integral de Riesgos",
+          "tipo": "COMITE",
+          "orden": 1,
+          "esContenedorRat": false
+        },
+        {
+          "codigo": "COMITE_SEGURIDAD_INFORMACION",
+          "nombre": "Comite de Seguridad de la Informacion",
+          "tipo": "COMITE",
+          "orden": 2,
+          "esContenedorRat": false
+        },
+        {
+          "codigo": "COMITE_EVALUACION_INCAPACIDADES",
+          "nombre": "Comite de Evaluacion de Incapacidades y Responsabilidad Patronal",
+          "tipo": "COMITE",
+          "orden": 3,
+          "esContenedorRat": false
+        },
+        {
+          "codigo": "COMITE_NACIONAL_VALUADOR",
+          "nombre": "Comite Nacional Valuador",
+          "tipo": "COMITE",
+          "orden": 4,
+          "esContenedorRat": false
+        },
+        {
+          "codigo": "COMITE_INFORMATICO",
+          "nombre": "Comite Informatico",
+          "tipo": "COMITE",
+          "orden": 5,
+          "esContenedorRat": false
+        }
+      ]
+    },
+    {
+      "codigo": "ENTIDADES_VINCULADAS",
+      "nombre": "Entidades vinculadas",
+      "tipo": "BLOQUE",
+      "orden": 8,
+      "esContenedorRat": false,
+      "children": [
+        {
+          "codigo": "BIESS",
+          "nombre": "BIESS",
+          "tipo": "ENTIDAD_VINCULADA",
+          "orden": 1,
+          "esContenedorRat": true
+        }
+      ]
+    }
+  ]
+}

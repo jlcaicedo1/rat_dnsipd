@@ -1,18 +1,18 @@
 import { Module } from "@nestjs/common";
-import { DependenciaController } from "./dependencia.controller";
-import { DependenciaService } from "./dependencia.service";
-import { SubdireccionController } from "./subdireccion.controller";
-import { SubdireccionService } from "./subdireccion.service";
+import { DependenciasController } from "./dependencias.controller";
+import { DependenciasService } from "./dependencias.service";
+import { SubdireccionesController } from "./subdirecciones.controller";
+import { SubdireccionesService } from "./subdirecciones.service";
 import { TipoProcesoController } from "./tipo-proceso.controller";
 import { TipoProcesoService } from "./tipo-proceso.service";
 
 @Module({
   controllers: [
     TipoProcesoController,
-    DependenciaController,
-    SubdireccionController,
+    DependenciasController,
+    SubdireccionesController,
   ],
-  providers: [TipoProcesoService, DependenciaService, SubdireccionService],
-  exports: [TipoProcesoService, DependenciaService, SubdireccionService],
+  providers: [TipoProcesoService, DependenciasService, SubdireccionesService],
+  exports: [TipoProcesoService, DependenciasService, SubdireccionesService],
 })
 export class EstructuraOrganicaModule {}

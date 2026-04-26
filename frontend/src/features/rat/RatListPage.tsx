@@ -13,7 +13,18 @@ export function RatListPage() {
         </Link>
       </header>
       <div className="panel">
-        <p>Listado base pendiente de integracion con API.</p>
+        <p>
+          Cada RAT debe pertenecer a una unidad responsable padre. Las
+          subdirecciones y unidades hijas ejecutan actividades, pero no
+          necesariamente requieren un RAT independiente por cada una.
+        </p>
+      </div>
+      <div className="panel">
+        <p>
+          La automatizacion recomendada es filtrar los RAT por la unidad
+          organica seleccionada y sugerir el RAT correcto dentro de ese
+          conjunto, en lugar de asignarlo de forma ciega.
+        </p>
       </div>
     </section>
   );
