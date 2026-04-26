@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../features/auth/auth-store";
 
 const navSections = [
@@ -35,9 +36,15 @@ const navSections = [
 ];
 
 export function MainLayout() {
+  const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   function handleLogout() {
     logout();
@@ -45,7 +52,14 @@ export function MainLayout() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={isSidebarOpen ? "app-shell app-shell-mobile-open" : "app-shell"}>
+      <button
+        type="button"
+        className={isSidebarOpen ? "sidebar-overlay sidebar-overlay-visible" : "sidebar-overlay"}
+        aria-label="Cerrar menu"
+        onClick={() => setIsSidebarOpen(false)}
+      />
+
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">R</div>
@@ -83,6 +97,25 @@ export function MainLayout() {
         </div>
       </aside>
       <main className="content">
+        <div className="mobile-topbar">
+          <div className="mobile-topbar-brand">
+            <div className="brand-mark">R</div>
+            <div>
+              <span className="brand-kicker">Data Protection</span>
+              <strong>DNSIPD</strong>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="button-secondary mobile-topbar-toggle"
+            aria-expanded={isSidebarOpen}
+            onClick={() => setIsSidebarOpen((current) => !current)}
+          >
+            {isSidebarOpen ? "Cerrar menu" : "Menu"}
+          </button>
+        </div>
+
         <Outlet />
       </main>
     </div>

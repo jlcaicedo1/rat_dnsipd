@@ -3,30 +3,14 @@ import { MainLayout } from "../layouts/MainLayout";
 import { LoginPage } from "../features/auth/LoginPage";
 import { RequireAuth } from "../features/auth/RequireAuth";
 import { AuditLogPage } from "../features/audit/AuditLogPage";
+import { ActivitiesPage } from "../features/activities-page/ActivitiesPage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { RatListPage } from "../features/rat/RatListPage";
 import { RatCreatePage } from "../features/rat/RatCreatePage";
 import { ModulePage } from "../features/modules/ModulePage";
+import { OrganizationStructurePage } from "../features/organization/OrganizationStructurePage";
 
 const modulePages = [
-  {
-    path: "actividades",
-    eyebrow: "Actividades",
-    title: "Actividades de tratamiento",
-    description:
-      "Inventario operacional de tratamientos, finalidades, bases de licitud, titulares, categorias de datos y transferencias, asociado a un RAT y a una unidad ejecutora.",
-    status: "MVP planificado",
-    scope: [
-      "Versionamiento por actividad y trazabilidad de cambios relevantes.",
-      "Relaciones con RAT, unidad organica ejecutora, activos de informacion y catalogos normalizados.",
-      "Alertas por revisiones vencidas, actividades de alto volumen o datos sensibles.",
-    ],
-    metrics: [
-      { label: "Actividades", value: "0" },
-      { label: "Versiones", value: "0" },
-      { label: "Pendientes", value: "0" },
-    ],
-  },
   {
     path: "activos",
     eyebrow: "Inventario",
@@ -135,24 +119,6 @@ const modulePages = [
       { label: "Activos", value: "3" },
     ],
   },
-  {
-    path: "estructura-organica",
-    eyebrow: "Organizacion",
-    title: "Estructura organica",
-    description:
-      "Modelo jerarquico para dependencias, direcciones, subdirecciones, responsables y tipos de proceso institucional sin depender de numerales como clave.",
-    status: "Base cargada",
-    scope: [
-      "Unidad responsable padre para alojar uno o varios RAT.",
-      "Unidad ejecutora hija para clasificar actividades de tratamiento y activos.",
-      "Base para permisos, reportes y filtros por arbol organizacional completo.",
-    ],
-    metrics: [
-      { label: "Dependencias", value: "1" },
-      { label: "Subdirecciones", value: "1" },
-      { label: "Tipos proceso", value: "1" },
-    ],
-  },
 ];
 
 export function AppRouter() {
@@ -165,6 +131,8 @@ export function AppRouter() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="rats" element={<RatListPage />} />
           <Route path="rats/new" element={<RatCreatePage />} />
+          <Route path="actividades" element={<ActivitiesPage />} />
+          <Route path="estructura-organica" element={<OrganizationStructurePage />} />
           <Route path="audit" element={<AuditLogPage />} />
           {modulePages.map((page) => (
             <Route
