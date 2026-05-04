@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { AppIcon, type AppIconName } from "../../components/AppIcon";
 import { getActivityRegistryRecords, getRatRegistryRecords } from "../rat/rat-registry-data";
 
 export function DashboardPage() {
@@ -8,11 +9,15 @@ export function DashboardPage() {
   const eipdActivities = activityRecords.filter((item) => item.requiereEipd);
   const reviewActivities = activityRecords.filter((item) => item.estado === "En revision");
 
-  const summary = [
-    { label: "RAT vigentes", value: String(ratRecords.filter((item) => item.estado === "Vigente").length) },
-    { label: "Actividades activas", value: String(activityRecords.length) },
-    { label: "EIPD necesarias", value: String(eipdActivities.length) },
-    { label: "Riesgos altos", value: String(highRiskActivities.length) },
+  const summary: DashboardSummaryItem[] = [
+    {
+      label: "RAT vigentes",
+      value: String(ratRecords.filter((item) => item.estado === "Vigente").length),
+      icon: "formalization",
+    },
+    { label: "Actividades activas", value: String(activityRecords.length), icon: "activities" },
+    { label: "EIPD necesarias", value: String(eipdActivities.length), icon: "eipd" },
+    { label: "Riesgos altos", value: String(highRiskActivities.length), icon: "risks" },
   ];
 
   return (
@@ -20,16 +25,21 @@ export function DashboardPage() {
       <header className="page-header page-header-inline">
         <div>
           <span className="brand-kicker">Vista general</span>
-          <h2>Dashboard institucional</h2>
+          <div className="page-title-with-icon">
+            <span className="page-title-icon">
+              <AppIcon name="dashboard" size={22} strokeWidth={2.1} />
+            </span>
+            <h2>Dashboard institucional</h2>
+          </div>
           <p className="page-copy">
-            Este panel debe llevar al usuario directo al trabajo prioritario: RAT por formalizar,
-            actividades en revision y tratamientos que exigen mayor control.
+            Este panel lleva al usuario directo al trabajo prioritario: tratamientos en
+            revision, formalizacion pendiente y casos con mayor exposicion.
           </p>
         </div>
 
         <div className="registry-header-actions">
-          <Link to="/rats" className="button-primary">
-            Ir a Registro RAT
+          <Link to="/actividades" className="button-primary">
+            Ir a tratamientos
           </Link>
         </div>
       </header>
@@ -37,7 +47,12 @@ export function DashboardPage() {
       <div className="summary-grid">
         {summary.map((item) => (
           <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
+            <div className="stat-card-top">
+              <span>{item.label}</span>
+              <span className="stat-card-icon">
+                <AppIcon name={item.icon} size={18} strokeWidth={2.1} />
+              </span>
+            </div>
             <strong>{item.value}</strong>
           </article>
         ))}
@@ -48,10 +63,15 @@ export function DashboardPage() {
           <div className="panel-heading">
             <div>
               <span className="brand-kicker">Prioridad institucional</span>
-              <h3>RAT con mayor exposicion</h3>
+              <div className="panel-title-with-icon">
+                <span className="panel-title-icon">
+                  <AppIcon name="risks" size={18} strokeWidth={2.1} />
+                </span>
+                <h3>Tratamientos con mayor exposicion</h3>
+              </div>
             </div>
-            <Link to="/rats" className="pill">
-              Ver consola
+            <Link to="/actividades" className="pill">
+              Ver modulo
             </Link>
           </div>
 
@@ -66,7 +86,9 @@ export function DashboardPage() {
                     <span>{item.nombre}</span>
                   </div>
                   <div className="dashboard-list-meta">
-                    <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>{item.riesgo}</span>
+                    <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>
+                      {item.riesgo}
+                    </span>
                     <span className={item.requiereEipd ? "pill eipd-pill-yes" : "pill eipd-pill-no"}>
                       {item.requiereEipd ? "EIPD Si" : "EIPD No"}
                     </span>
@@ -80,7 +102,12 @@ export function DashboardPage() {
           <div className="panel-heading">
             <div>
               <span className="brand-kicker">Seguimiento operacional</span>
-              <h3>Actividades en revision</h3>
+              <div className="panel-title-with-icon">
+                <span className="panel-title-icon">
+                  <AppIcon name="activities" size={18} strokeWidth={2.1} />
+                </span>
+                <h3>Actividades en revision</h3>
+              </div>
             </div>
             <Link to="/actividades" className="pill">
               Ver actividades
@@ -96,7 +123,9 @@ export function DashboardPage() {
                 </div>
                 <div className="dashboard-list-meta">
                   <span className="pill status-pill-en-revision">En revision</span>
-                  <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>{item.riesgo}</span>
+                  <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>
+                    {item.riesgo}
+                  </span>
                 </div>
               </article>
             ))}
@@ -107,7 +136,12 @@ export function DashboardPage() {
           <div className="panel-heading">
             <div>
               <span className="brand-kicker">EIPD y privacidad</span>
-              <h3>Tratamientos que exigen atencion</h3>
+              <div className="panel-title-with-icon">
+                <span className="panel-title-icon">
+                  <AppIcon name="eipd" size={18} strokeWidth={2.1} />
+                </span>
+                <h3>Tratamientos que exigen atencion</h3>
+              </div>
             </div>
             <span className="pill">{eipdActivities.length} casos</span>
           </div>
@@ -131,22 +165,27 @@ export function DashboardPage() {
           <div className="panel-heading">
             <div>
               <span className="brand-kicker">Accesos rapidos</span>
-              <h3>Flujos principales</h3>
+              <div className="panel-title-with-icon">
+                <span className="panel-title-icon">
+                  <AppIcon name="dashboard" size={18} strokeWidth={2.1} />
+                </span>
+                <h3>Flujos principales</h3>
+              </div>
             </div>
           </div>
 
           <div className="dashboard-links">
-            <Link to="/rats" className="dashboard-link-card">
-              <strong>Registro RAT</strong>
-              <span>Consola maestra, ficha imprimible y aprobacion.</span>
-            </Link>
             <Link to="/actividades" className="dashboard-link-card">
-              <strong>Actividades</strong>
-              <span>Bandeja operativa con version, riesgo y pendientes.</span>
+              <strong>Actividades de tratamiento</strong>
+              <span>Bandeja operativa con riesgo, version, trazabilidad y salida documental.</span>
             </Link>
-            <Link to="/rats/new" className="dashboard-link-card">
-              <strong>Nuevo RAT</strong>
-              <span>Ingreso guiado de un nuevo registro.</span>
+            <Link to="/actividades/nuevo" className="dashboard-link-card">
+              <strong>Nuevo tratamiento</strong>
+              <span>Ingreso guiado por etapas con progreso del registro visible.</span>
+            </Link>
+            <Link to="/activos" className="dashboard-link-card">
+              <strong>Activos de informacion</strong>
+              <span>Inventario de soporte para relacionar activos, riesgos y tratamientos.</span>
             </Link>
           </div>
         </section>
@@ -154,6 +193,12 @@ export function DashboardPage() {
     </section>
   );
 }
+
+type DashboardSummaryItem = {
+  label: string;
+  value: string;
+  icon: AppIconName;
+};
 
 function normalizeToken(value: string) {
   return value

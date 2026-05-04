@@ -18,6 +18,8 @@ export type OrgUnit = {
   ownerRole: string;
 };
 
+const ORG_UNIT_STATUS_STORAGE_KEY = "dnsipd:organization-unit-statuses";
+
 const orgUnits: OrgUnit[] = [
   {
     id: "iess",
@@ -693,5 +695,48 @@ const orgUnits: OrgUnit[] = [
 ];
 
 export function getOrganizationUnits() {
-  return orgUnits;
+  const overrides = readOrganizationStatusOverrides();
+
+  return orgUnits.map((unit) => ({
+    ...unit,
+    status: overrides[unit.id] ?? unit.status,
+  }));
+}
+
+export function saveOrganizationUnits(units: OrgUnit[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const defaultStatuses = Object.fromEntries(orgUnits.map((unit) => [unit.id, unit.status]));
+  const overrides = Object.fromEntries(
+    units
+      .filter((unit) => defaultStatuses[unit.id] !== unit.status)
+      .map((unit) => [unit.id, unit.status]),
+  );
+
+  window.localStorage.setItem(ORG_UNIT_STATUS_STORAGE_KEY, JSON.stringify(overrides));
+}
+
+function readOrganizationStatusOverrides() {
+  if (typeof window === "undefined") {
+    return {} as Record<string, OrgUnitStatus>;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ORG_UNIT_STATUS_STORAGE_KEY);
+    if (!rawValue) {
+      return {} as Record<string, OrgUnitStatus>;
+    }
+
+    const parsed = JSON.parse(rawValue) as Record<string, string>;
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, OrgUnitStatus] =>
+        entry[1] === "Activa" || entry[1] === "Inactiva",
+      ),
+    );
+  } catch {
+    return {} as Record<string, OrgUnitStatus>;
+  }
 }

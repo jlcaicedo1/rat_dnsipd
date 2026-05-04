@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { TreatmentReportPreview } from "./TreatmentReportPreview";
+import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { ReportPreviewModal } from "./ReportPreviewModal";
 import {
   defaultSignatureFields,
   getDependenciaOptions,
@@ -9,6 +10,7 @@ import {
   type RatRegistryRecord,
   type SignatureFieldState,
 } from "./rat-registry-data";
+import { buildReportPreviewDocument } from "./TreatmentReportPreview";
 
 export function RatListPage() {
   const ratRecords = getRatRegistryRecords();
@@ -22,7 +24,8 @@ export function RatListPage() {
   const [selectedActivityId, setSelectedActivityId] = useState<number>(
     ratRecords[0]?.activities[0]?.id ?? 0,
   );
-  const [signatures, setSignatures] = useState<SignatureFieldState>(defaultSignatureFields);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const filteredRats = ratRecords.filter((record) => {
     const matchesSearch =
@@ -57,6 +60,39 @@ export function RatListPage() {
       setSelectedActivityId(selectedRat.activities[0]?.id ?? 0);
     }
   }, [selectedActivityId, selectedRat, selectedRatId]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    if (isPreviewOpen) {
+      document.body.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isPreviewOpen]);
+
+  useEffect(() => {
+    if (!isPreviewOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsPreviewOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isPreviewOpen]);
+
+  const signatures = buildSignatureFields(selectedRat);
 
   const stats = [
     { label: "RAT registrados", value: String(ratRecords.length) },
@@ -152,7 +188,7 @@ export function RatListPage() {
             </label>
           </div>
 
-          <div className="table-wrapper table-wrapper-matrix">
+          <TableScrollFrame className="table-wrapper-matrix" maxHeight="64vh">
             <table className="registry-table registry-table-rats">
               <thead>
                 <tr>
@@ -205,7 +241,7 @@ export function RatListPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollFrame>
 
           {selectedRat ? (
             <section className="registry-activities-strip">
@@ -253,10 +289,10 @@ export function RatListPage() {
             <>
               <div className="registry-preview-summary">
                 <div>
-                  <span className="brand-kicker">Vista formalizable</span>
-                  <h3>{selectedActivity.nombre}</h3>
+                  <span className="brand-kicker">Salida documental</span>
+                  <h3>{selectedRat.codigo}</h3>
                   <p className="page-copy">
-                    Esta ficha sirve para revision, aprobacion interna e impresion del tratamiento.
+                    La ficha formal solo se abre cuando necesite validarla antes de imprimirla o descargarla.
                   </p>
                 </div>
                 <div className="registry-preview-meta">
@@ -266,18 +302,51 @@ export function RatListPage() {
                 </div>
               </div>
 
-              <TreatmentReportPreview
-                report={selectedActivity.report}
-                signatures={signatures}
-                onSignatureChange={(field, value) =>
-                  setSignatures((current) => ({ ...current, [field]: value }))
-                }
-                onPrint={() => {
-                  if (typeof window !== "undefined") {
-                    window.print();
-                  }
-                }}
-              />
+              <div className="registry-document-grid">
+                <article className="registry-document-card">
+                  <span>Actividad seleccionada</span>
+                  <strong>{selectedActivity.nombre}</strong>
+                  <small>{selectedActivity.codigo}</small>
+                </article>
+                <article className="registry-document-card">
+                  <span>Dependencia responsable</span>
+                  <strong>{selectedRat.dependencia}</strong>
+                  <small>{selectedRat.unidadResponsable}</small>
+                </article>
+                <article className="registry-document-card">
+                  <span>Ultima actualizacion</span>
+                  <strong>{selectedActivity.report.ultimaActualizacion}</strong>
+                  <small>Version {selectedActivity.version}</small>
+                </article>
+                <article className="registry-document-card">
+                  <span>Parametros activos</span>
+                  <strong>
+                    {dependencia === "Todas" ? selectedRat.dependencia : dependencia}
+                  </strong>
+                  <small>{estado === "Todos" ? selectedRat.estado : estado}</small>
+                </article>
+              </div>
+
+              <div className="registry-document-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setIsPreviewOpen(true)}
+                >
+                  Vista previa
+                </button>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => setIsPreviewOpen(true)}
+                >
+                  Imprimir ficha
+                </button>
+              </div>
+
+              <p className="registry-document-note">
+                La vista previa es de solo lectura y siempre debe respetar el formato final del documento.
+              </p>
             </>
           ) : (
             <div className="empty-state">
@@ -286,6 +355,44 @@ export function RatListPage() {
           )}
         </aside>
       </div>
+
+      {selectedRat && selectedActivity ? (
+        <ReportPreviewModal
+          heading={`Ficha del tratamiento · ${selectedActivity.nombre}`}
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          onDownload={() => {
+            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
+
+            if (!surfaceMarkup || typeof document === "undefined") {
+              return;
+            }
+
+            const documentHtml = buildReportPreviewDocument(
+              `Ficha ${selectedActivity.report.codigoRat}`,
+              surfaceMarkup,
+            );
+            const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+
+            link.href = objectUrl;
+            link.download = `${selectedActivity.report.codigoRat}-${slugify(selectedActivity.nombre)}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(objectUrl);
+          }}
+          onPrint={() => {
+            if (typeof window !== "undefined") {
+              window.print();
+            }
+          }}
+          report={selectedActivity.report}
+          signatures={signatures}
+          surfaceRef={previewSurfaceRef}
+        />
+      ) : null}
     </section>
   );
 }
@@ -316,4 +423,26 @@ function normalizeToken(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "-")
     .toLowerCase();
+}
+
+function buildSignatureFields(record: RatRegistryRecord | null): SignatureFieldState {
+  if (!record) {
+    return defaultSignatureFields;
+  }
+
+  return {
+    elaboradoPorNombre: record.responsableLevantamiento,
+    elaboradoPorCargo: "Responsable del levantamiento RAT",
+    responsableNombre: record.responsableTratamiento,
+    responsableCargo: record.unidadResponsable,
+  };
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

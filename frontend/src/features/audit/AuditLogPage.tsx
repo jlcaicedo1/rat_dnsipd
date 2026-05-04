@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
+import { TableScrollFrame } from "../../components/TableScrollFrame";
 import { apiClient } from "../../services/api-client";
 import type { AuditLog } from "./audit.types";
 
@@ -62,8 +63,7 @@ export function AuditLogPage() {
     }
   }, [logs, selectedLogId]);
 
-  const selectedLog =
-    logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null;
+  const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null;
 
   const summary = useMemo(() => {
     const uniqueActors = new Set(logs.map((log) => log.actor).filter(Boolean));
@@ -87,8 +87,8 @@ export function AuditLogPage() {
           <span className="brand-kicker">Trazabilidad</span>
           <h2>Auditoria del sistema</h2>
           <p className="page-copy">
-            Consulta eventos registrados por backend con actor, accion,
-            contexto y detalle antes/despues.
+            Consulta eventos registrados por backend con actor, accion, contexto y detalle
+            antes/despues.
           </p>
         </div>
       </header>
@@ -175,7 +175,7 @@ export function AuditLogPage() {
           ) : logs.length === 0 ? (
             <div className="empty-state">No hay registros para los filtros seleccionados.</div>
           ) : (
-            <div className="table-wrapper">
+            <TableScrollFrame maxHeight="64vh">
               <table className="audit-table">
                 <thead>
                   <tr>
@@ -210,7 +210,7 @@ export function AuditLogPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScrollFrame>
           )}
         </section>
 

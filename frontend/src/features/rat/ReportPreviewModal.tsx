@@ -1,0 +1,75 @@
+import type { RefObject } from "react";
+import type { SignatureFieldState, TreatmentReport } from "./rat-registry-data";
+import { TreatmentReportPreview } from "./TreatmentReportPreview";
+
+type ReportPreviewModalProps = {
+  isOpen: boolean;
+  heading: string;
+  report: TreatmentReport;
+  signatures: SignatureFieldState;
+  onClose: () => void;
+  onPrint: () => void;
+  onDownload: () => void;
+  surfaceRef: RefObject<HTMLDivElement>;
+};
+
+export function ReportPreviewModal({
+  isOpen,
+  heading,
+  report,
+  signatures,
+  onClose,
+  onPrint,
+  onDownload,
+  surfaceRef,
+}: ReportPreviewModalProps) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="report-preview-title">
+      <button
+        type="button"
+        className="report-preview-modal-backdrop"
+        aria-label="Cerrar vista previa"
+        onClick={onClose}
+      />
+
+      <div className="report-preview-modal-dialog">
+        <header className="report-preview-modal-header">
+          <div>
+            <span className="brand-kicker">Vista previa del reporte</span>
+            <h3 id="report-preview-title">{heading}</h3>
+            <p className="page-copy">
+              Revise el contenido, formato y disposicion final del documento antes de imprimirlo o descargarlo.
+            </p>
+          </div>
+
+          <div className="report-preview-modal-actions">
+            <button type="button" className="button-secondary" onClick={onClose}>
+              Cerrar
+            </button>
+            <button type="button" className="button-secondary" onClick={onDownload}>
+              Descargar
+            </button>
+            <button type="button" className="button-primary" onClick={onPrint}>
+              Imprimir documento
+            </button>
+          </div>
+        </header>
+
+        <div className="report-preview-modal-body">
+          <TreatmentReportPreview
+            heading={heading}
+            readOnly
+            report={report}
+            showToolbar={false}
+            signatures={signatures}
+            surfaceRef={surfaceRef}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -5,7 +5,6 @@ import { RequireAuth } from "../features/auth/RequireAuth";
 import { AuditLogPage } from "../features/audit/AuditLogPage";
 import { ActivitiesPage } from "../features/activities-page/ActivitiesPage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
-import { RatListPage } from "../features/rat/RatListPage";
 import { RatCreatePage } from "../features/rat/RatCreatePage";
 import { ModulePage } from "../features/modules/ModulePage";
 import { OrganizationStructurePage } from "../features/organization/OrganizationStructurePage";
@@ -129,9 +128,10 @@ export function AppRouter() {
         <Route element={<MainLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="rats" element={<RatListPage />} />
-          <Route path="rats/new" element={<RatCreatePage />} />
           <Route path="actividades" element={<ActivitiesPage />} />
+          <Route path="actividades/nuevo" element={<RatCreatePage />} />
+          <Route path="rats" element={<ActivitiesPage />} />
+          <Route path="rats/new" element={<RatCreatePage />} />
           <Route path="estructura-organica" element={<OrganizationStructurePage />} />
           <Route path="audit" element={<AuditLogPage />} />
           {modulePages.map((page) => (

@@ -1,39 +1,41 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { useAuthStore } from "../features/auth/auth-store";
 
 const navSections = [
   {
     title: "Inicio",
-    items: [{ to: "/dashboard", label: "Dashboard" }],
+    items: [{ to: "/dashboard", label: "Dashboard", icon: "dashboard" }],
   },
   {
-    title: "Gestion RAT",
+    title: "Nucleo operativo",
     items: [
-      { to: "/rats", label: "Registro RAT" },
-      { to: "/rats/new", label: "Nuevo RAT" },
-      { to: "/actividades", label: "Actividades de tratamiento" },
-      { to: "/activos", label: "Activos de informacion" },
+      { to: "/actividades", label: "Actividades de tratamiento", icon: "activities" },
+      { to: "/activos", label: "Activos de informacion", icon: "assets" },
     ],
   },
   {
     title: "Evaluacion y cumplimiento",
     items: [
-      { to: "/mtge", label: "Evaluacion MTGE" },
-      { to: "/riesgos", label: "Riesgos" },
-      { to: "/eipd", label: "EIPD" },
+      { to: "/mtge", label: "Evaluacion MTGE", icon: "mtge" },
+      { to: "/riesgos", label: "Riesgos", icon: "risks" },
+      { to: "/eipd", label: "EIPD", icon: "eipd" },
     ],
   },
   {
-    title: "Gobierno",
+    title: "Gobierno y administracion",
     items: [
-      { to: "/reportes", label: "Reportes" },
-      { to: "/audit", label: "Auditoria" },
-      { to: "/catalogos", label: "Catalogos" },
-      { to: "/estructura-organica", label: "Estructura organica" },
+      { to: "/reportes", label: "Reportes", icon: "reports" },
+      { to: "/audit", label: "Auditoria", icon: "audit" },
+      { to: "/catalogos", label: "Catalogos", icon: "catalogs" },
+      { to: "/estructura-organica", label: "Estructura organica", icon: "organization" },
     ],
   },
-];
+] as const satisfies Array<{
+  title: string;
+  items: Array<{ to: string; label: string; icon: AppIconName }>;
+}>;
 
 export function MainLayout() {
   const location = useLocation();
@@ -63,9 +65,9 @@ export function MainLayout() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">R</div>
-          <span className="brand-kicker">Data Protection</span>
+          <span className="brand-kicker">Privacidad institucional</span>
           <h1>DNSIPD</h1>
-          <p>Registro, activos, riesgos y auditoria.</p>
+          <p>Tratamientos, activos, riesgo, auditoria y gobierno del dato.</p>
         </div>
         <nav className="nav">
           {navSections.map((section) => (
@@ -79,12 +81,28 @@ export function MainLayout() {
                     isActive ? "nav-link nav-link-active" : "nav-link"
                   }
                 >
-                  {item.label}
+                  <span className="nav-link-content">
+                    <span className="nav-link-icon">
+                      <AppIcon name={item.icon} size={17} strokeWidth={2.1} />
+                    </span>
+                    <span>{item.label}</span>
+                  </span>
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
+        <div className="sidebar-cta">
+          <div className="sidebar-cta-copy">
+            <span className="brand-kicker">Accion principal</span>
+            <strong>Crear nuevo tratamiento</strong>
+            <p>Inicia el registro guiado desde el modulo operativo principal.</p>
+          </div>
+          <NavLink to="/actividades/nuevo" className="button-sidebar-primary">
+            <AppIcon name="new" size={16} strokeWidth={2.15} />
+            Nuevo tratamiento
+          </NavLink>
+        </div>
         <div className="sidebar-footer">
           <div>
             <span className="sidebar-user-label">Sesion</span>
@@ -101,7 +119,7 @@ export function MainLayout() {
           <div className="mobile-topbar-brand">
             <div className="brand-mark">R</div>
             <div>
-              <span className="brand-kicker">Data Protection</span>
+              <span className="brand-kicker">Privacidad institucional</span>
               <strong>DNSIPD</strong>
             </div>
           </div>

@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { TableScrollFrame } from "../../components/TableScrollFrame";
 import {
+  defaultSignatureFields,
   getActivityTraceability,
   getActivityRegistryRecords,
   getDependenciaOptions,
   getRiskOptions,
   getRatStatusOptions,
   type ActivityRegistryRecord,
+  type SignatureFieldState,
 } from "../rat/rat-registry-data";
-import { ActivityRelationshipGraph } from "./ActivityRelationshipGraph";
+import { ReportPreviewModal } from "../rat/ReportPreviewModal";
+import { buildReportPreviewDocument } from "../rat/TreatmentReportPreview";
+import { ActivityMapModal } from "./ActivityMapModal";
 
 export function ActivitiesPage() {
   const activityRecords = getActivityRegistryRecords();
@@ -21,10 +26,9 @@ export function ActivitiesPage() {
   const [estado, setEstado] = useState("Todos");
   const [riesgo, setRiesgo] = useState("Todos");
   const [eipd, setEipd] = useState("Todos");
-  const [viewMode, setViewMode] = useState<"operativa" | "grafo">("operativa");
-  const [selectedActivityId, setSelectedActivityId] = useState<number>(
-    activityRecords[0]?.id ?? 0,
-  );
+  const [previewActivityId, setPreviewActivityId] = useState<number | null>(null);
+  const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
+  const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const filteredActivities = activityRecords.filter((activity) => {
     const matchesSearch =
@@ -49,253 +53,296 @@ export function ActivitiesPage() {
     return matchesSearch && matchesDependencia && matchesEstado && matchesRiesgo && matchesEipd;
   });
 
-  const selectedActivity =
-    filteredActivities.find((item) => item.id === selectedActivityId) ??
-    filteredActivities[0] ??
-    null;
-  const selectedTraceability = selectedActivity
-    ? getActivityTraceability(selectedActivity.id)
+  const previewActivity =
+    activityRecords.find((item) => item.id === previewActivityId) ?? null;
+  const previewTraceability = previewActivity
+    ? getActivityTraceability(previewActivity.id)
+    : null;
+  const previewSignatures = buildSignatureFields(previewActivity, previewTraceability);
+
+  const relationshipActivity =
+    activityRecords.find((item) => item.id === relationshipActivityId) ?? null;
+  const relationshipTraceability = relationshipActivity
+    ? getActivityTraceability(relationshipActivity.id)
     : null;
 
+  const isAnyModalOpen = previewActivityId !== null || relationshipActivityId !== null;
+
   useEffect(() => {
-    if (selectedActivity && selectedActivity.id !== selectedActivityId) {
-      setSelectedActivityId(selectedActivity.id);
+    if (typeof document === "undefined") {
+      return;
     }
-  }, [selectedActivity, selectedActivityId]);
 
-  const stats = [
-    { label: "Actividades", value: String(activityRecords.length) },
-    {
-      label: "En revision",
-      value: String(activityRecords.filter((item) => item.estado === "En revision").length),
-    },
-    {
-      label: "Alto riesgo",
-      value: String(activityRecords.filter((item) => item.riesgo === "Alto").length),
-    },
-    {
-      label: "Con EIPD",
-      value: String(activityRecords.filter((item) => item.requiereEipd).length),
-    },
-  ];
+    const previousOverflow = document.body.style.overflow;
 
-  const activityMatrix = (
-    <section
-      className={
-        viewMode === "operativa"
-          ? "panel activities-list-pane activities-list-pane-expanded"
-          : "panel activities-list-pane"
+    if (isAnyModalOpen) {
+      document.body.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isAnyModalOpen]);
+
+  useEffect(() => {
+    if (!isAnyModalOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewActivityId(null);
+        setRelationshipActivityId(null);
       }
-    >
-      <div className="panel-heading">
-        <div>
-          <span className="brand-kicker">
-            {viewMode === "operativa" ? "Trabajo por actividad" : "Trazabilidad y analitica"}
-          </span>
-          <h3>
-            {viewMode === "operativa"
-              ? "Matriz operativa institucional"
-              : "Selecciona una actividad para revisar su articulacion"}
-          </h3>
-        </div>
-        <span className="pill">{filteredActivities.length} visibles</span>
-      </div>
+    };
 
-      <div className="activities-filters">
-        <label className="field">
-          <span>Buscar</span>
-          <input
-            className="input"
-            placeholder="Actividad, RAT, dependencia"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isAnyModalOpen]);
 
-        <label className="field">
-          <span>Dependencia</span>
-          <select
-            className="input"
-            value={dependencia}
-            onChange={(event) => setDependencia(event.target.value)}
-          >
-            <option value="Todas">Todas</option>
-            {dependenciaOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Estado</span>
-          <select className="input" value={estado} onChange={(event) => setEstado(event.target.value)}>
-            <option value="Todos">Todos</option>
-            {statusOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Riesgo</span>
-          <select className="input" value={riesgo} onChange={(event) => setRiesgo(event.target.value)}>
-            <option value="Todos">Todos</option>
-            {riskOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>EIPD</span>
-          <select className="input" value={eipd} onChange={(event) => setEipd(event.target.value)}>
-            <option value="Todos">Todos</option>
-            <option value="Si">Si</option>
-            <option value="No">No</option>
-          </select>
-        </label>
-      </div>
-
-      {filteredActivities.length > 0 ? (
-        <div className="table-wrapper table-wrapper-matrix">
-          <table
-            className={
-              viewMode === "operativa"
-                ? "registry-table registry-table-activities"
-                : "registry-table registry-table-activities registry-table-activities-graph"
-            }
-          >
-            <thead>
-              <tr>
-                <th>Actividad</th>
-                <th>RAT</th>
-                {viewMode === "operativa" ? <th>Dependencia</th> : null}
-                <th>Finalidad</th>
-                <th>Unidad ejecutora</th>
-                <th>Estado</th>
-                <th>Riesgo</th>
-                <th>EIPD</th>
-                <th>Version</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredActivities.map((activity) => (
-                <tr
-                  key={activity.id}
-                  className={selectedActivity?.id === activity.id ? "table-row-selected" : undefined}
-                  onClick={() => setSelectedActivityId(activity.id)}
-                >
-                  <td>
-                    <div className="table-primary-copy">
-                      <strong>{activity.codigo}</strong>
-                      <small>{activity.nombre}</small>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="table-primary-copy">
-                      <strong>{activity.ratCodigo}</strong>
-                      <small>{activity.ratNombre}</small>
-                    </div>
-                  </td>
-                  {viewMode === "operativa" ? <td>{activity.dependencia}</td> : null}
-                  <td className="table-purpose-cell">
-                    {shortenCopy(activity.report.finalidadEspecifica, viewMode === "grafo" ? 110 : 140)}
-                  </td>
-                  <td>{activity.unidadEjecutora}</td>
-                  <td>
-                    <StatusBadge value={activity.estado} />
-                  </td>
-                  <td>
-                    <RiskBadge value={activity.riesgo} />
-                  </td>
-                  <td>
-                    <EipdBadge value={activity.requiereEipd} />
-                  </td>
-                  <td>{activity.version}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="empty-state">No hay actividades disponibles con los filtros seleccionados.</div>
-      )}
-    </section>
+  const stats = useMemo(
+    () => [
+      { label: "Actividades", value: String(activityRecords.length) },
+      {
+        label: "En revision",
+        value: String(activityRecords.filter((item) => item.estado === "En revision").length),
+      },
+      {
+        label: "Alto riesgo",
+        value: String(activityRecords.filter((item) => item.riesgo === "Alto").length),
+      },
+      {
+        label: "Con EIPD",
+        value: String(activityRecords.filter((item) => item.requiereEipd).length),
+      },
+    ],
+    [activityRecords],
   );
 
   return (
     <section className="activities-page">
       <header className="page-header page-header-inline">
         <div>
-          <span className="brand-kicker">Bandeja operativa</span>
+          <span className="brand-kicker">Nucleo operativo</span>
           <h2>Actividades de tratamiento</h2>
           <p className="page-copy">
-            Esta vista no duplica al RAT. Aqui se trabaja por actividad: seguimiento
-            operativo, inteligencia del tratamiento y trazabilidad accionable ante incidente.
+            Toda la gestion queda concentrada en una sola matriz: seguimiento,
+            lectura documental y mapa relacional de cada tratamiento sin paneles paralelos.
           </p>
         </div>
 
-        <div className="registry-header-actions">
-          <div className="segmented-switch" role="tablist" aria-label="Modo de vista">
-            <button
-              type="button"
-              className={viewMode === "operativa" ? "segmented-switch-active" : undefined}
-              onClick={() => setViewMode("operativa")}
-            >
-              Bandeja operativa
-            </button>
-            <button
-              type="button"
-              className={viewMode === "grafo" ? "segmented-switch-active" : undefined}
-              onClick={() => setViewMode("grafo")}
-            >
-              Mapa de relaciones
-            </button>
+        <div className="activities-header-actions">
+          <div className="activities-header-buttons">
+            <Link to="/activos" className="button-secondary">
+              Ver activos
+            </Link>
+            <Link to="/actividades/nuevo" className="button-primary">
+              Nuevo tratamiento
+            </Link>
           </div>
-
-          <Link to="/rats" className="button-secondary">
-            Ir a Registro RAT
-          </Link>
         </div>
       </header>
 
-      {viewMode === "operativa" ? (
-        <div className="summary-grid">
-          {stats.map((item) => (
-            <article key={item.label} className="stat-card">
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </article>
-          ))}
+      <div className="summary-grid">
+        {stats.map((item) => (
+          <article key={item.label} className="stat-card">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </article>
+        ))}
+      </div>
+
+      <section className="panel activities-matrix-panel">
+        <div className="panel-heading panel-heading-compact">
+          <div>
+            <span className="brand-kicker">Matriz institucional centralizada</span>
+            <h3>Listado consolidado por actividad</h3>
+          </div>
+          <span className="pill">{filteredActivities.length} visibles</span>
         </div>
+
+        <div className="activities-filters">
+          <label className="field">
+            <span>Buscar</span>
+            <input
+              className="input"
+              placeholder="Actividad, RAT, dependencia"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
+          <label className="field">
+            <span>Dependencia</span>
+            <select
+              className="input"
+              value={dependencia}
+              onChange={(event) => setDependencia(event.target.value)}
+            >
+              <option value="Todas">Todas</option>
+              {dependenciaOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Estado</span>
+            <select className="input" value={estado} onChange={(event) => setEstado(event.target.value)}>
+              <option value="Todos">Todos</option>
+              {statusOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Riesgo</span>
+            <select className="input" value={riesgo} onChange={(event) => setRiesgo(event.target.value)}>
+              <option value="Todos">Todos</option>
+              {riskOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>EIPD</span>
+            <select className="input" value={eipd} onChange={(event) => setEipd(event.target.value)}>
+              <option value="Todos">Todos</option>
+              <option value="Si">Si</option>
+              <option value="No">No</option>
+            </select>
+          </label>
+        </div>
+
+        {filteredActivities.length > 0 ? (
+          <TableScrollFrame className="table-wrapper-matrix" maxHeight="68vh">
+            <table className="registry-table registry-table-activities registry-table-activities-central">
+              <thead>
+                <tr>
+                  <th>Actividad</th>
+                  <th>RAT</th>
+                  <th>Dependencia</th>
+                  <th>Finalidad</th>
+                  <th>Unidad ejecutora</th>
+                  <th>Estado</th>
+                  <th>Riesgo</th>
+                  <th>EIPD</th>
+                  <th>Version</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredActivities.map((activity) => (
+                  <tr key={activity.id}>
+                    <td>
+                      <div className="table-primary-copy">
+                        <strong>{activity.codigo}</strong>
+                        <small>{activity.nombre}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="table-primary-copy">
+                        <strong>{activity.ratCodigo}</strong>
+                        <small>{activity.ratNombre}</small>
+                      </div>
+                    </td>
+                    <td>{activity.dependencia}</td>
+                    <td className="table-purpose-cell">
+                      {shortenCopy(activity.report.finalidadEspecifica, 148)}
+                    </td>
+                    <td>{activity.unidadEjecutora}</td>
+                    <td>
+                      <StatusBadge value={activity.estado} />
+                    </td>
+                    <td>
+                      <RiskBadge value={activity.riesgo} />
+                    </td>
+                    <td>
+                      <EipdBadge value={activity.requiereEipd} />
+                    </td>
+                    <td>{activity.version}</td>
+                    <td className="table-actions-cell">
+                      <div className="table-action-group">
+                        <button
+                          type="button"
+                          className="button-table-action"
+                          onClick={() => setPreviewActivityId(activity.id)}
+                        >
+                          Vista previa
+                        </button>
+                        <button
+                          type="button"
+                          className="button-table-action button-table-action-secondary"
+                          onClick={() => setRelationshipActivityId(activity.id)}
+                        >
+                          Mapa
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScrollFrame>
+        ) : (
+          <div className="empty-state">No hay actividades disponibles con los filtros seleccionados.</div>
+        )}
+      </section>
+
+      {previewActivity ? (
+        <ReportPreviewModal
+          heading={`Ficha del tratamiento · ${previewActivity.nombre}`}
+          isOpen
+          onClose={() => setPreviewActivityId(null)}
+          onDownload={() => {
+            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
+
+            if (!surfaceMarkup || typeof document === "undefined") {
+              return;
+            }
+
+            const documentHtml = buildReportPreviewDocument(
+              `Ficha ${previewActivity.report.codigoRat}`,
+              surfaceMarkup,
+            );
+            const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+
+            link.href = objectUrl;
+            link.download = `${previewActivity.report.codigoRat}-${slugify(previewActivity.nombre)}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(objectUrl);
+          }}
+          onPrint={() => {
+            if (typeof window !== "undefined") {
+              window.print();
+            }
+          }}
+          report={previewActivity.report}
+          signatures={previewSignatures}
+          surfaceRef={previewSurfaceRef}
+        />
       ) : null}
 
-      {viewMode === "operativa" ? (
-        activityMatrix
-      ) : (
-        <div className="activities-shell activities-shell-graph">
-          {activityMatrix}
-
-          <aside className="panel activities-side-pane">
-            {selectedActivity && selectedTraceability ? (
-              <ActivityRelationshipGraph
-                activity={selectedActivity}
-                traceability={selectedTraceability}
-              />
-            ) : (
-              <div className="empty-state">
-                No hay actividades disponibles con los filtros seleccionados.
-              </div>
-            )}
-          </aside>
-        </div>
-      )}
+      {relationshipActivity && relationshipTraceability ? (
+        <ActivityMapModal
+          activity={relationshipActivity}
+          isOpen
+          onClose={() => setRelationshipActivityId(null)}
+          traceability={relationshipTraceability}
+        />
+      ) : null}
     </section>
   );
 }
@@ -330,4 +377,31 @@ function shortenCopy(value: string, maxLength: number) {
   }
 
   return `${value.slice(0, maxLength).trimEnd()}...`;
+}
+
+function buildSignatureFields(
+  activity: ActivityRegistryRecord | null,
+  traceability: ReturnType<typeof getActivityTraceability> | null,
+): SignatureFieldState {
+  if (!activity) {
+    return defaultSignatureFields;
+  }
+
+  return {
+    elaboradoPorNombre:
+      traceability?.owner.nombre ?? defaultSignatureFields.elaboradoPorNombre,
+    elaboradoPorCargo:
+      traceability?.owner.cargo ?? defaultSignatureFields.elaboradoPorCargo,
+    responsableNombre: activity.responsables[0] ?? defaultSignatureFields.responsableNombre,
+    responsableCargo: activity.unidadEjecutora || defaultSignatureFields.responsableCargo,
+  };
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

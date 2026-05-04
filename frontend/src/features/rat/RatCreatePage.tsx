@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { apiClient } from "../../services/api-client";
+import { getOrganizationUnits } from "../organization/organization-structure-data";
 import {
   SearchableSelect,
   type SearchableSelectOption,
@@ -27,6 +29,7 @@ type Dependencia = {
   id: number;
   nombre: string;
   sigla?: string | null;
+  activo?: boolean | null;
   tipoProceso?: {
     id: number;
     nombre: string;
@@ -41,6 +44,7 @@ type Subdireccion = {
   id: number;
   nombre: string;
   sigla?: string | null;
+  activo?: boolean | null;
 };
 
 type SubdireccionesResponse = {
@@ -81,12 +85,6 @@ type RatDraftForm = {
   categoriaActivo: string;
   baseDatos: string;
   observacionRiesgo: string;
-};
-
-type StepMeta = {
-  eyebrow: string;
-  summary: string;
-  footer: string;
 };
 
 type StepProgress = {
@@ -132,79 +130,6 @@ const INITIAL_FORM: RatDraftForm = {
   observacionRiesgo: "",
 };
 
-const STEP_META: StepMeta[] = [
-  {
-    eyebrow: "Base del registro",
-    summary:
-      "Aterriza la actividad: nombre, unidad responsable, unidad ejecutora y una descripcion clara.",
-    footer:
-      "Cuando esta base queda bien definida, el resto del formulario se vuelve mucho mas rapido.",
-  },
-  {
-    eyebrow: "Sustento del tratamiento",
-    summary:
-      "Explica por que existe la actividad y cual es la base juridica que la habilita.",
-    footer:
-      "Describe la finalidad con lenguaje operativo y deja la base legal lista para auditoria.",
-  },
-  {
-    eyebrow: "Sujetos involucrados",
-    summary:
-      "Selecciona solo los tipos de titulares realmente impactados por esta actividad.",
-    footer:
-      "No necesitas justificar cada seleccion aqui; la prioridad es reflejar el alcance real.",
-  },
-  {
-    eyebrow: "Universo de datos",
-    summary:
-      "Marca las categorias de datos y luego resume los principales campos personales tratados.",
-    footer:
-      "Este paso alimenta la lectura de riesgo y la necesidad posterior de EIPD.",
-  },
-  {
-    eyebrow: "Operacion y escala",
-    summary:
-      "Define el origen de los datos, las acciones que se aplican y la escala del tratamiento.",
-    footer:
-      "Piensa este paso como la fotografia operativa de la actividad en la practica.",
-  },
-  {
-    eyebrow: "Terceros y flujos",
-    summary:
-      "Solo completa este paso en detalle cuando existan accesos, encargos o transferencias.",
-    footer:
-      "Si no hay terceros ni transferencias, puedes dejarlo en su minima expresion y continuar.",
-  },
-  {
-    eyebrow: "Ciclo de vida",
-    summary:
-      "Deja claro cuanto tiempo se conserva la informacion y cuales son sus fechas de control.",
-    footer:
-      "El plazo de retencion es clave para trazabilidad, bajas y revisiones posteriores.",
-  },
-  {
-    eyebrow: "Controles aplicados",
-    summary:
-      "Resume las medidas de seguridad que ya existen y el posible uso de perfilamiento.",
-    footer:
-      "Describe controles reales, no solo deseados; eso mejora la calidad del analisis de riesgo.",
-  },
-  {
-    eyebrow: "Soporte de informacion",
-    summary:
-      "Relaciona los activos, repositorios o medios que soportan la actividad de tratamiento.",
-    footer:
-      "Este puente sera util despues para enlazar la actividad con activos gestionados formalmente.",
-  },
-  {
-    eyebrow: "Lectura preliminar",
-    summary:
-      "Cierra con una vista sintetica del riesgo y con observaciones para MTGE o EIPD.",
-    footer:
-      "Aqui no cierras el analisis; solo dejas listo el contexto para la siguiente evaluacion.",
-  },
-];
-
 const STEP_REQUIREMENTS: Array<Array<(form: RatDraftForm) => boolean>> = [
   [
     (form) => form.nombreTratamiento.trim().length > 0,
@@ -232,6 +157,7 @@ const STEP_REQUIREMENTS: Array<Array<(form: RatDraftForm) => boolean>> = [
 export function RatCreatePage() {
   const [activeStep, setActiveStep] = useState(0);
   const [form, setForm] = useState<RatDraftForm>(INITIAL_FORM);
+  const activeOrganizationLookup = useMemo(() => buildActiveOrganizationLookup(), []);
 
   const dependenciasQuery = useQuery({
     queryKey: ["dependencias", "rat-form"],
@@ -256,8 +182,12 @@ export function RatCreatePage() {
     },
   });
 
-  const dependencias = dependenciasQuery.data ?? [];
-  const subdirecciones = subdireccionesQuery.data ?? [];
+  const dependencias = (dependenciasQuery.data ?? []).filter((item) =>
+    isUnitAvailableForRegistration(item, activeOrganizationLookup),
+  );
+  const subdirecciones = (subdireccionesQuery.data ?? []).filter((item) =>
+    isUnitAvailableForRegistration(item, activeOrganizationLookup),
+  );
   const selectedDependencia =
     dependencias.find((item) => String(item.id) === form.dependenciaId) ?? null;
   const selectedSubdireccion =
@@ -266,24 +196,21 @@ export function RatCreatePage() {
     value: String(item.id),
     label: item.nombre,
     tag: item.sigla,
-    meta: item.tipoProceso?.nombre ?? "Unidad sin bloque organico",
     searchText: item.tipoProceso?.nombre ?? "",
   }));
   const subdireccionOptions = subdirecciones.map<SearchableSelectOption>((item) => ({
     value: String(item.id),
     label: item.nombre,
     tag: item.sigla,
-    meta: selectedDependencia?.nombre ?? "Unidad ejecutora",
   }));
 
   const generatedCode = buildRatCode(selectedDependencia?.sigla ?? null);
   const currentStep = RAT_FORM_STEPS[activeStep];
-  const currentStepMeta = STEP_META[activeStep];
   const stepProgress = STEP_REQUIREMENTS.map((checks) => getStepProgress(form, checks));
   const completedRequired = stepProgress.reduce((sum, item) => sum + item.completed, 0);
   const totalRequired = stepProgress.reduce((sum, item) => sum + item.total, 0);
   const progress = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
-  const currentStepProgress = stepProgress[activeStep];
+  const progressTone = getProgressTone(progress);
 
   const hasSpecialCategories = form.categoriasDatos.some((item) =>
     SPECIAL_DATA_CATEGORIES.includes(item),
@@ -320,15 +247,14 @@ export function RatCreatePage() {
     <section className="wizard-experience">
       <header className="page-header page-header-inline wizard-page-header">
         <div>
-          <span className="brand-kicker">Registro de actividad de tratamiento</span>
-          <h2>Crear una actividad sin friccion innecesaria</h2>
-          <p className="page-copy">
-            El formulario ahora avanza por etapas cortas, mantiene el progreso visible
-            y concentra al usuario solo en lo que necesita resolver en el paso actual.
-          </p>
+          <span className="brand-kicker">Actividades de tratamiento</span>
+          <h2>Nuevo tratamiento</h2>
         </div>
 
         <div className="wizard-toolbar">
+          <Link to="/actividades" className="button-secondary">
+            Volver a actividades
+          </Link>
           <span className="status-pill">BORRADOR</span>
           <button type="button" className="button-secondary">
             Guardar borrador
@@ -337,39 +263,15 @@ export function RatCreatePage() {
       </header>
 
       <section className="panel wizard-overview">
-        <div className="wizard-overview-top">
-          <div>
-            <span className="brand-kicker">Progreso del registro</span>
-            <h3>{progress}% completado</h3>
-            <p className="page-copy">
-              {completedRequired} de {totalRequired} campos obligatorios listos.
-              Avanza por bloques, no por una hoja infinita.
-            </p>
-          </div>
-
-          <div className="wizard-overview-badges">
-            <article className="overview-badge">
-              <strong>
-                Paso {activeStep + 1} / {RAT_FORM_STEPS.length}
-              </strong>
-              <span>{currentStep.title}</span>
-            </article>
-            <article className="overview-badge">
-              <strong>
-                {currentStepProgress.total > 0
-                  ? `${currentStepProgress.completed}/${currentStepProgress.total}`
-                  : "Complementario"}
-              </strong>
-              <span>
-                {currentStepProgress.total > 0
-                  ? "obligatorios de este paso"
-                  : "sin campos obligatorios"}
-              </span>
-            </article>
-          </div>
+        <div className="wizard-overview-row">
+          <span className="wizard-overview-label">Progreso del registro</span>
+          <strong className="wizard-progress-value">{progress}%</strong>
         </div>
 
-        <div className="progress-bar wizard-progress-bar">
+        <div
+          className="progress-bar wizard-progress-bar"
+          style={{ ["--wizard-progress-tone" as string]: progressTone }}
+        >
           <span style={{ width: `${progress}%` }} />
         </div>
 
@@ -387,7 +289,6 @@ export function RatCreatePage() {
         <aside className="panel wizard-rail">
           <div className="wizard-rail-header">
             <span className="brand-kicker">Secciones</span>
-            <strong>Navega sin perder el hilo</strong>
           </div>
 
           {RAT_FORM_STEPS.map((item, index) => {
@@ -404,12 +305,6 @@ export function RatCreatePage() {
                 <span className="wizard-step-index">{index + 1}</span>
                 <span className="wizard-step-copy">
                   <strong>{item.title}</strong>
-                  <small>{item.caption}</small>
-                </span>
-                <span className="wizard-step-meter">
-                  {itemProgress.total > 0
-                    ? `${itemProgress.completed}/${itemProgress.total}`
-                    : "Libre"}
                 </span>
               </button>
             );
@@ -420,20 +315,7 @@ export function RatCreatePage() {
           <section className="panel wizard-stage">
             <div className="wizard-stage-header">
               <div>
-                <span className="brand-kicker">{currentStepMeta.eyebrow}</span>
                 <h3>{currentStep.title}</h3>
-                <p className="page-copy">{currentStepMeta.summary}</p>
-              </div>
-
-              <div className="wizard-stage-badges">
-                <span className="pill">
-                  Paso {activeStep + 1} de {RAT_FORM_STEPS.length}
-                </span>
-                <span className="pill pill-muted">
-                  {currentStepProgress.total > 0
-                    ? `${currentStepProgress.completed}/${currentStepProgress.total} obligatorios`
-                    : "Paso complementario"}
-                </span>
               </div>
             </div>
 
@@ -446,28 +328,6 @@ export function RatCreatePage() {
 
             {activeStep === 0 ? (
               <div className="wizard-section-stack">
-                <SectionCard
-                  title="Control del registro"
-                  description="Los datos generados automaticamente quedan visibles desde el inicio."
-                >
-                  <div className="form-grid form-grid-3">
-                    <label className="field">
-                      <span>Codigo RAT</span>
-                      <input className="input readonly-field" readOnly value={generatedCode} />
-                    </label>
-
-                    <label className="field">
-                      <span>Fecha de creacion</span>
-                      <input className="input readonly-field" readOnly value={TODAY} />
-                    </label>
-
-                    <label className="field">
-                      <span>Estado inicial</span>
-                      <input className="input readonly-field" readOnly value="BORRADOR" />
-                    </label>
-                  </div>
-                </SectionCard>
-
                 <SectionCard
                   title="Contexto organizacional"
                   description="Selecciona primero la unidad responsable para activar la unidad ejecutora correspondiente."
@@ -501,10 +361,7 @@ export function RatCreatePage() {
                       <input
                         className="input readonly-field"
                         readOnly
-                        value={
-                          selectedDependencia?.tipoProceso?.nombre ??
-                          "Seleccione primero la unidad responsable"
-                        }
+                        value={selectedDependencia?.tipoProceso?.nombre ?? "Pendiente"}
                       />
                     </label>
 
@@ -515,7 +372,7 @@ export function RatCreatePage() {
                         options={subdireccionOptions}
                         placeholder={
                           form.dependenciaId.length === 0
-                            ? "Seleccione antes la unidad responsable"
+                            ? "Pendiente"
                             : subdireccionesQuery.isLoading
                               ? "Cargando unidades ejecutoras..."
                               : "Seleccione la unidad ejecutora"
@@ -1207,11 +1064,6 @@ export function RatCreatePage() {
           </section>
 
           <div className="wizard-action-bar">
-            <div className="wizard-action-context">
-              <strong>{currentStep.title}</strong>
-              <span>{currentStepMeta.footer}</span>
-            </div>
-
             <div className="wizard-footer-actions">
               <button type="button" className="button-secondary">
                 Cancelar
@@ -1244,23 +1096,13 @@ export function RatCreatePage() {
 }
 
 function SectionCard({
-  title,
-  description,
   children,
 }: {
-  title: string;
-  description: string;
+  title?: string;
+  description?: string;
   children: ReactNode;
 }) {
-  return (
-    <section className="section-card">
-      <div className="section-card-header">
-        <h4>{title}</h4>
-        <p>{description}</p>
-      </div>
-      {children}
-    </section>
-  );
+  return <section className="section-card">{children}</section>;
 }
 
 function ChoiceGroup({
@@ -1299,9 +1141,9 @@ function toggleValue(items: string[], value: string) {
 
 function buildRatCode(sigla: string | null) {
   const year = new Date().getFullYear();
-  const normalizedSigla = sigla?.trim().length ? sigla.trim().toUpperCase() : "UNIDAD";
+  const normalizedSigla = sigla?.trim().length ? sigla.trim().toUpperCase() : "PENDIENTE";
 
-  return `RAT-IESS-${normalizedSigla}-${year}`;
+  return `RAT-${normalizedSigla}-${year}`;
 }
 
 function getStepProgress(
@@ -1336,4 +1178,68 @@ function formatOrgLabel(nombre: string, sigla?: string | null) {
   }
 
   return `${nombre} (${sigla.trim().toUpperCase()})`;
+}
+
+function buildActiveOrganizationLookup() {
+  const values = new Set<string>();
+
+  for (const unit of getOrganizationUnits()) {
+    if (unit.status !== "Activa") {
+      continue;
+    }
+
+    values.add(normalizeOrgKey(unit.nombre));
+
+    if (unit.sigla?.trim()) {
+      values.add(normalizeOrgKey(unit.sigla));
+    }
+  }
+
+  return values;
+}
+
+function isUnitAvailableForRegistration(
+  unit: { nombre: string; sigla?: string | null; activo?: boolean | null },
+  activeOrganizationLookup: Set<string>,
+) {
+  if (unit.activo === false) {
+    return false;
+  }
+
+  if (activeOrganizationLookup.size === 0) {
+    return true;
+  }
+
+  return (
+    activeOrganizationLookup.has(normalizeOrgKey(unit.nombre)) ||
+    Boolean(unit.sigla?.trim() && activeOrganizationLookup.has(normalizeOrgKey(unit.sigla)))
+  );
+}
+
+function normalizeOrgKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function getProgressTone(progress: number) {
+  if (progress >= 100) {
+    return "#215732";
+  }
+
+  if (progress >= 75) {
+    return "#4f7a2a";
+  }
+
+  if (progress >= 50) {
+    return "#a56b1f";
+  }
+
+  if (progress >= 25) {
+    return "#bf4f22";
+  }
+
+  return "#8f2f2f";
 }
