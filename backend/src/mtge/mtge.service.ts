@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   MTGE_METHOD_VERSION,
@@ -14,10 +15,11 @@ export class MtgeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
-  async findOne(actividadVersionId: number) {
-    await this.ensureVersionExists(actividadVersionId);
+  async findOne(actividadVersionId: number, actor: AuthenticatedUser) {
+    await this.ensureVersionExists(actividadVersionId, actor);
 
     const data = await this.prisma.mtgeEvaluacion.findUnique({
       where: { actividadVersionId },
@@ -31,7 +33,8 @@ export class MtgeService {
     dto: CalculateMtgeDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersionExists(actividadVersionId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersionExists(actividadVersionId, actor);
     ensureActividadVersionEditable(version.estadoVersion);
 
     const calculated = calculateMtgeResult(dto);
@@ -100,7 +103,8 @@ export class MtgeService {
   }
 
   async remove(actividadVersionId: number, actor?: AuthenticatedUser) {
-    const version = await this.ensureVersionExists(actividadVersionId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersionExists(actividadVersionId, actor);
     ensureActividadVersionEditable(version.estadoVersion);
 
     const current = await this.prisma.mtgeEvaluacion.findUnique({
@@ -154,9 +158,16 @@ export class MtgeService {
     return { data };
   }
 
-  private async ensureVersionExists(id: number) {
-    const version = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  private async ensureVersionExists(id: number, actor?: AuthenticatedUser) {
+    const version = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        ...(actor
+          ? {
+              actividad: this.authz.actividadWhere(actor),
+            }
+          : {}),
+      },
     });
 
     if (!version) {

@@ -3,4 +3,6 @@ export type AuthenticatedUser = {
   username: string;
   role: string;
   nombre?: string;
+  dependenciaId?: number | null;
+  subdireccionId?: number | null;
 };

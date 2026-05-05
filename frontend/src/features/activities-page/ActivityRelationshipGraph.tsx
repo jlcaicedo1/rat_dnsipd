@@ -1,3 +1,17 @@
+import "@xyflow/react/dist/style.css";
+
+import { useMemo } from "react";
+import {
+  Background,
+  BackgroundVariant,
+  Handle,
+  MarkerType,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
 import { AppIcon, type AppIconName } from "../../components/AppIcon";
 import type {
   ActivityRegistryRecord,
@@ -16,6 +30,11 @@ export function ActivityRelationshipGraph({
 }: ActivityRelationshipGraphProps) {
   const primaryAsset = traceability.activos[0] ?? null;
   const supportAssets = traceability.activos.slice(1, 5);
+  const graphAssets = traceability.activos.length > 0 ? traceability.activos : null;
+  const { nodes, edges } = useMemo(
+    () => buildGraphModel(activity, traceability),
+    [activity, traceability],
+  );
 
   return (
     <section className="relationship-schema-card">
@@ -26,44 +45,41 @@ export function ActivityRelationshipGraph({
         <SchemaMetaItem label="Unidad ejecutora" value={activity.unidadEjecutora} />
       </dl>
 
-      <div className="relationship-schema-flow-shell">
-        <div className="relationship-schema-flow" aria-label="Relacion entre responsable, actividad y activo principal">
-          <SchemaBlock
-            icon="owner"
-            kicker="Responsable"
-            title={traceability.owner.nombre}
-            lines={[traceability.owner.cargo, traceability.owner.unidad]}
-          />
+      <div className="relationship-graph-board">
+        <ReactFlow
+          aria-label="Grafo de actividad y activos tecnologicos"
+          edges={edges}
+          fitView
+          fitViewOptions={{ padding: 0.22 }}
+          maxZoom={1.25}
+          minZoom={0.55}
+          nodes={nodes}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          nodeTypes={nodeTypes}
+          panOnDrag
+          proOptions={{ hideAttribution: true }}
+          zoomOnDoubleClick={false}
+        >
+          <Background color="#d7e3ea" gap={22} size={1} variant={BackgroundVariant.Dots} />
+        </ReactFlow>
+      </div>
 
-          <span className="relationship-schema-arrow" aria-hidden="true">
-            →
-          </span>
-
-          <SchemaBlock
-            icon="activity"
-            kicker="Actividad"
-            title={activity.nombre}
-            lines={[activity.codigo, shortenCopy(activity.report.finalidadEspecifica, 118)]}
-            variant="focus"
-          />
-
-          <span className="relationship-schema-arrow" aria-hidden="true">
-            →
-          </span>
-
-          <SchemaBlock
-            icon="asset"
-            kicker="Activo principal"
-            title={primaryAsset?.nombre ?? "Activo no definido"}
-            lines={
-              primaryAsset
-                ? [`${primaryAsset.tipo} · ${primaryAsset.criticidad}`, primaryAsset.plataforma]
-                : [
-                    "Sin componente principal asociado",
-                    "Revise el inventario de activos del tratamiento",
-                  ]
-            }
-          />
+      <div className="relationship-graph-summary">
+        <div>
+          <span className="relationship-schema-label">Actividad</span>
+          <strong>{activity.codigo}</strong>
+          <small>{shortenCopy(activity.nombre, 96)}</small>
+        </div>
+        <div>
+          <span className="relationship-schema-label">Activos vinculados</span>
+          <strong>{graphAssets?.length ?? 0}</strong>
+          <small>{primaryAsset?.nombre ?? "Sin activo tecnologico asociado"}</small>
+        </div>
+        <div>
+          <span className="relationship-schema-label">Custodio principal</span>
+          <strong>{primaryAsset?.custodio ?? "Pendiente"}</strong>
+          <small>{primaryAsset?.plataforma ?? "Plataforma no documentada"}</small>
         </div>
       </div>
 
@@ -116,6 +132,141 @@ export function ActivityRelationshipGraph({
   );
 }
 
+type GraphNodeData = {
+  icon: AppIconName;
+  kicker: string;
+  title: string;
+  lines: string[];
+  tone?: "activity" | "asset" | "owner" | "empty";
+};
+
+const nodeTypes = {
+  relationshipNode: RelationshipNode,
+};
+
+function buildGraphModel(
+  activity: ActivityRegistryRecord,
+  traceability: ActivityTraceabilityModel,
+) {
+  const assets = traceability.activos.length > 0 ? traceability.activos : null;
+  const activityNodeId = "activity";
+  const nodes: Node<GraphNodeData>[] = [
+    {
+      id: "owner",
+      type: "relationshipNode",
+      position: { x: 0, y: 20 },
+      data: {
+        icon: "owner",
+        kicker: "Responsable",
+        title: traceability.owner.nombre,
+        lines: [traceability.owner.cargo, traceability.owner.unidad],
+        tone: "owner",
+      },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Right,
+    },
+    {
+      id: activityNodeId,
+      type: "relationshipNode",
+      position: { x: 360, y: 150 },
+      data: {
+        icon: "activity",
+        kicker: "Actividad de tratamiento",
+        title: activity.nombre,
+        lines: [activity.codigo, activity.report.finalidadEspecifica],
+        tone: "activity",
+      },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    },
+  ];
+
+  const edges: Edge[] = [
+    {
+      id: "owner-activity",
+      source: "owner",
+      target: activityNodeId,
+      label: "administra",
+      markerEnd: { type: MarkerType.ArrowClosed },
+      type: "smoothstep",
+    },
+  ];
+
+  if (!assets) {
+    nodes.push({
+      id: "asset-empty",
+      type: "relationshipNode",
+      position: { x: 760, y: 160 },
+      data: {
+        icon: "asset",
+        kicker: "Activo tecnologico",
+        title: "Sin activo asociado",
+        lines: ["Seleccione un activo del inventario para cerrar la trazabilidad."],
+        tone: "empty",
+      },
+      targetPosition: Position.Left,
+    });
+    edges.push({
+      id: "activity-asset-empty",
+      source: activityNodeId,
+      target: "asset-empty",
+      label: "requiere asociacion",
+      markerEnd: { type: MarkerType.ArrowClosed },
+      type: "smoothstep",
+    });
+    return { nodes, edges };
+  }
+
+  const startY = assets.length === 1 ? 150 : 30;
+  assets.slice(0, 6).forEach((asset, index) => {
+    const assetNodeId = `asset-${asset.id}`;
+
+    nodes.push({
+      id: assetNodeId,
+      type: "relationshipNode",
+      position: { x: 760, y: startY + index * 126 },
+      data: {
+        icon: index === 0 ? "asset" : "support",
+        kicker: index === 0 ? "Activo principal" : "Activo de soporte",
+        title: asset.nombre,
+        lines: [`${asset.tipo} · ${asset.criticidad}`, `${asset.plataforma} · ${asset.custodio}`],
+        tone: "asset",
+      },
+      targetPosition: Position.Left,
+    });
+
+    edges.push({
+      id: `${activityNodeId}-${assetNodeId}`,
+      source: activityNodeId,
+      target: assetNodeId,
+      label: index === 0 ? "contiene datos en" : "se apoya en",
+      markerEnd: { type: MarkerType.ArrowClosed },
+      type: "smoothstep",
+    });
+  });
+
+  return { nodes, edges };
+}
+
+function RelationshipNode({ data }: NodeProps<Node<GraphNodeData>>) {
+  return (
+    <article className={`relationship-graph-node relationship-graph-node-${data.tone ?? "asset"}`}>
+      <Handle type="target" position={Position.Left} />
+      <div className="relationship-schema-block-head">
+        <span className="relationship-schema-block-icon">
+          <AppIcon name={data.icon} size={18} strokeWidth={2.1} />
+        </span>
+        <span className="relationship-schema-label">{data.kicker}</span>
+      </div>
+      <strong>{data.title}</strong>
+      {data.lines.map((line) => (
+        <small key={line}>{shortenCopy(line, 120)}</small>
+      ))}
+      <Handle type="source" position={Position.Right} />
+    </article>
+  );
+}
+
 function SchemaMetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -131,42 +282,6 @@ function SchemaContextItem({ label, value }: { label: string; value: string }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
-  );
-}
-
-function SchemaBlock({
-  icon,
-  kicker,
-  title,
-  lines,
-  variant,
-}: {
-  icon: AppIconName;
-  kicker: string;
-  title: string;
-  lines: string[];
-  variant?: "focus";
-}) {
-  return (
-    <article
-      className={
-        variant === "focus"
-          ? "relationship-schema-block relationship-schema-block-focus"
-          : "relationship-schema-block"
-      }
-    >
-      <div className="relationship-schema-block-head">
-        <span className="relationship-schema-block-icon">
-          <AppIcon name={icon} size={18} strokeWidth={2.1} />
-        </span>
-        <span className="relationship-schema-label">{kicker}</span>
-      </div>
-
-      <strong>{title}</strong>
-      {lines.map((line) => (
-        <small key={line}>{line}</small>
-      ))}
-    </article>
   );
 }
 

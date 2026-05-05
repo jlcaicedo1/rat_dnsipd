@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   TriangleAlert,
   UserCog,
+  Users,
 } from "lucide-react";
 
 export type AppIconName =
@@ -39,6 +40,7 @@ export type AppIconName =
   | "settings"
   | "impact"
   | "owner"
+  | "users"
   | "activity"
   | "asset"
   | "support";
@@ -61,6 +63,7 @@ const iconRegistry = {
   settings: Settings2,
   impact: Boxes,
   owner: UserCog,
+  users: Users,
   activity: ClipboardList,
   asset: Server,
   support: Database,

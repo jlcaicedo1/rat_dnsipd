@@ -1,13 +1,12 @@
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
+
 type ModulePageProps = {
   eyebrow: string;
   title: string;
   description: string;
   status: string;
   scope: string[];
-  metrics: Array<{
-    label: string;
-    value: string;
-  }>;
+  metrics: ExecutiveKpiItem[];
 };
 
 export function ModulePage({
@@ -29,14 +28,7 @@ export function ModulePage({
         <span className="status-pill">{status}</span>
       </header>
 
-      <div className="summary-grid">
-        {metrics.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      {metrics.length > 0 ? <ExecutiveKpiGrid items={metrics} /> : null}
 
       <div className="module-grid">
         {scope.map((item) => (

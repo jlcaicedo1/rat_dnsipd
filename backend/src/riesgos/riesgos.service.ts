@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   calculateRiskLevel,
@@ -10,15 +11,30 @@ import {
 import { CreateRiesgoDto } from './dto/create-riesgo.dto';
 import { UpdateRiesgoDto } from './dto/update-riesgo.dto';
 
+const RISK_APPROVAL_STATES = new Set([
+  'APROBADO',
+  'APROBADA',
+  'ACEPTADO',
+  'ACEPTADA',
+  'OBSERVADO',
+  'OBSERVADA',
+  'DEVUELTO',
+  'DEVUELTA',
+]);
+
 @Injectable()
 export class RiesgosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
-  async findByActividadVersion(actividadVersionId: number) {
-    await this.ensureVersion(actividadVersionId);
+  async findByActividadVersion(
+    actividadVersionId: number,
+    actor: AuthenticatedUser,
+  ) {
+    await this.ensureVersion(actividadVersionId, actor);
 
     const data = await this.prisma.riesgoEvaluacion.findMany({
       where: { actividadVersionId },
@@ -33,7 +49,8 @@ export class RiesgosService {
     dto: CreateRiesgoDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(actividadVersionId);
+    this.assertRiskTransitionRole(dto.estado, actor);
+    const version = await this.ensureVersion(actividadVersionId, actor);
     ensureActividadVersionEditable(version.estadoVersion);
 
     const nivelRiesgo = calculateRiskLevel(dto.probabilidad, dto.impacto);
@@ -82,9 +99,14 @@ export class RiesgosService {
     return { data };
   }
 
-  async findOne(id: number) {
-    const data = await this.prisma.riesgoEvaluacion.findUnique({
-      where: { id },
+  async findOne(id: number, actor: AuthenticatedUser) {
+    const data = await this.prisma.riesgoEvaluacion.findFirst({
+      where: {
+        id,
+        actividadVersion: {
+          actividad: this.authz.actividadWhere(actor),
+        },
+      },
       include: {
         actividadVersion: {
           include: {
@@ -102,7 +124,8 @@ export class RiesgosService {
   }
 
   async update(id: number, dto: UpdateRiesgoDto, actor?: AuthenticatedUser) {
-    const current = await this.findOne(id);
+    this.assertRiskTransitionRole(dto.estado, actor);
+    const current = await this.findOne(id, actor as AuthenticatedUser);
     ensureActividadVersionEditable(current.data.actividadVersion.estadoVersion);
 
     const probabilidad = dto.probabilidad ?? current.data.probabilidad;
@@ -176,7 +199,8 @@ export class RiesgosService {
   }
 
   async remove(id: number, actor?: AuthenticatedUser) {
-    const current = await this.findOne(id);
+    this.authz.assertCanUpdateAssessments(actor);
+    const current = await this.findOne(id, actor as AuthenticatedUser);
     ensureActividadVersionEditable(current.data.actividadVersion.estadoVersion);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -204,9 +228,16 @@ export class RiesgosService {
     return { data };
   }
 
-  private async ensureVersion(id: number) {
-    const version = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  private async ensureVersion(id: number, actor?: AuthenticatedUser) {
+    const version = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        ...(actor
+          ? {
+              actividad: this.authz.actividadWhere(actor),
+            }
+          : {}),
+      },
     });
 
     if (!version) {
@@ -241,5 +272,19 @@ export class RiesgosService {
         requiereEipd: (mtge?.esGranEscala ?? false) || highRiskCount > 0 || hasEipd > 0,
       },
     });
+  }
+
+  private assertRiskTransitionRole(
+    estado: string | undefined,
+    actor: AuthenticatedUser | undefined,
+  ) {
+    const normalized = estado?.trim().toUpperCase();
+
+    if (normalized && RISK_APPROVAL_STATES.has(normalized)) {
+      this.authz.assertCanApproveTreatment(actor);
+      return;
+    }
+
+    this.authz.assertCanUpdateAssessments(actor);
   }
 }

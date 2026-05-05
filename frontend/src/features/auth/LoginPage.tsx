@@ -24,6 +24,29 @@ type LocationState = {
   from?: string;
 };
 
+const demoAccounts = [
+  {
+    label: "Administrador tecnico",
+    username: "admin",
+    password: "Admin1234*",
+  },
+  {
+    label: "Operador DSGSIF",
+    username: "operador.dsgsif",
+    password: "Operador1234*",
+  },
+  {
+    label: "Revisor",
+    username: "revisor",
+    password: "Revisor1234*",
+  },
+  {
+    label: "Admin funcional",
+    username: "admin.funcional",
+    password: "Funcional1234*",
+  },
+];
+
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,7 +78,7 @@ export function LoginPage() {
           nombre: user.nombre,
           email: user.email,
           username: user.username,
-          role: user.role ?? user.roles?.[0] ?? "ADMIN",
+          role: user.role ?? user.roles?.[0] ?? "ADMIN_TECNICO",
           dependenciaId: user.dependenciaId ?? null,
           subdireccionId: user.subdireccionId ?? null,
           activo: user.activo ?? true,
@@ -106,6 +129,26 @@ export function LoginPage() {
         <button type="submit" className="button-primary" disabled={isSubmitting}>
           {isSubmitting ? "Ingresando..." : "Ingresar"}
         </button>
+
+        <div className="demo-login-panel">
+          <span>Usuarios de prueba</span>
+          <div className="demo-login-grid">
+            {demoAccounts.map((account) => (
+              <button
+                key={account.username}
+                type="button"
+                className="button-ghost demo-login-button"
+                onClick={() => {
+                  setUsername(account.username);
+                  setPassword(account.password);
+                  setError(null);
+                }}
+              >
+                {account.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </form>
     </div>
   );

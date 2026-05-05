@@ -4,6 +4,10 @@ import { IsBoolean, IsOptional, IsString } from 'class-validator';
 export class QueryCatalogoDto {
   @IsOptional()
   @IsString()
+  dominio?: string;
+
+  @IsOptional()
+  @IsString()
   tipo?: string;
 
   @IsOptional()

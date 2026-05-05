@@ -24,15 +24,40 @@ model User {
 }
 
 model Catalogo {
-  id                              Int                @id @default(autoincrement())
-  tipo                            String
-  codigo                          String
-  nombre                          String
-  descripcion                     String?
-  activo                          Boolean            @default(true)
-  actividadVersionesBaseLicitud   ActividadVersion[]
+  id                            Int                 @id @default(autoincrement())
+  dominio                       String              @default("GENERAL")
+  tipo                          String
+  codigo                        String
+  nombre                        String
+  descripcion                   String?
+  activo                        Boolean             @default(true)
+  actividadVersionesBaseLicitud ActividadVersion[]
+  activosAmbienteInformacion    ActivoInformacion[] @relation("ActivoAmbienteInformacion")
+  activosBajaProgramada         ActivoInformacion[] @relation("ActivoBajaProgramada")
+  activosClasificacionInfo      ActivoInformacion[] @relation("ActivoClasificacionInfo")
+  activosDatosPersonales        ActivoInformacion[] @relation("ActivoDatosPersonales")
+  activosFuenteActivo           ActivoInformacion[] @relation("ActivoFuenteActivo")
+  activosImpacto                ActivoInformacion[] @relation("ActivoImpacto")
+  activosNivelInformacion       ActivoInformacion[] @relation("ActivoNivelInformacion")
+  activosPropiedadIntelectual   ActivoInformacion[] @relation("ActivoPropiedadIntelectual")
+  activosTipoInformacion        ActivoInformacion[] @relation("ActivoTipoInformacion")
+  activosVisibleInternet        ActivoInformacion[] @relation("ActivoVisibleInternet")
 
   @@unique([tipo, codigo])
+}
+
+model ParametroSistema {
+  id          Int      @id @default(autoincrement())
+  modulo      String
+  clave       String
+  nombre      String
+  descripcion String?
+  valor       Json
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([modulo, clave])
 }
 
 model Rat {
@@ -100,12 +125,79 @@ model ActividadVersion {
 }
 
 model ActivoInformacion {
-  id          Int               @id @default(autoincrement())
-  codigo      String            @unique
-  nombre      String
-  descripcion String?
-  activo      Boolean           @default(true)
-  actividades ActividadActivo[]
+  id                          Int                  @id @default(autoincrement())
+  codigo                      String               @unique
+  codigoActivoPadreExterno    String?
+  dependenciaNombreFuente     String?
+  siglaDependenciaFuente      String?
+  nombre                      String
+  descripcion                 String?
+  version                     String?
+  macroproceso                String?
+  proceso                     String?
+  subproceso                  String?
+  usoOtrasAreasProcesos       String?
+  direccionIpUrl              String?
+  propietarioActivo           String?
+  unidadPropietariaActivo     String?
+  custodio                    String?
+  areaCustodio                String?
+  ubicacion                   String?
+  controlesExistentes         String?
+  observaciones               String?
+  historico                   String?
+  fechaLevantamiento          DateTime?
+  confidencialidad            Int?
+  integridad                  Int?
+  disponibilidad              Int?
+  valorActivo                 Float?
+  activo                      Boolean              @default(true)
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @default(now()) @updatedAt
+  dependenciaId               Int?
+  activoPadreId               Int?
+  tipoActivoId                Int?
+  nivelId                     Int?
+  ambienteId                  Int?
+  clasificacionInfoId         Int?
+  datosPersonalesId           Int?
+  visibleInternetId           Int?
+  fuenteActivoId              Int?
+  bajaProgramadaId            Int?
+  propiedadIntelectualId      Int?
+  impactoId                   Int?
+  dependencia                 OrgDependencia?      @relation(fields: [dependenciaId], references: [id])
+  activoPadre                 ActivoInformacion?   @relation("ActivoPadreHijo", fields: [activoPadreId], references: [id])
+  activosHijos                ActivoInformacion[]  @relation("ActivoPadreHijo")
+  tipoActivo                  Catalogo?            @relation("ActivoTipoInformacion", fields: [tipoActivoId], references: [id])
+  nivel                       Catalogo?            @relation("ActivoNivelInformacion", fields: [nivelId], references: [id])
+  ambiente                    Catalogo?            @relation("ActivoAmbienteInformacion", fields: [ambienteId], references: [id])
+  clasificacionInformacion    Catalogo?            @relation("ActivoClasificacionInfo", fields: [clasificacionInfoId], references: [id])
+  datosPersonales             Catalogo?            @relation("ActivoDatosPersonales", fields: [datosPersonalesId], references: [id])
+  visibleInternet             Catalogo?            @relation("ActivoVisibleInternet", fields: [visibleInternetId], references: [id])
+  fuenteActivo                Catalogo?            @relation("ActivoFuenteActivo", fields: [fuenteActivoId], references: [id])
+  bajaProgramada              Catalogo?            @relation("ActivoBajaProgramada", fields: [bajaProgramadaId], references: [id])
+  propiedadIntelectual        Catalogo?            @relation("ActivoPropiedadIntelectual", fields: [propiedadIntelectualId], references: [id])
+  impacto                     Catalogo?            @relation("ActivoImpacto", fields: [impactoId], references: [id])
+  fuentesUsuarios             ActivoFuenteUsuario[]
+  actividades                 ActividadActivo[]
+
+  @@index([dependenciaId])
+  @@index([activoPadreId])
+  @@index([tipoActivoId])
+  @@index([impactoId])
+}
+
+model ActivoFuenteUsuario {
+  id        Int               @id @default(autoincrement())
+  activoId  Int
+  nombre    String
+  orden     Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  activo    ActivoInformacion @relation(fields: [activoId], references: [id], onDelete: Cascade)
+
+  @@unique([activoId, nombre])
 }
 
 model ActividadActivo {
@@ -198,17 +290,18 @@ model Eipd {
 }
 
 model OrgDependencia {
-  id              Int               @id @default(autoincrement())
+  id              Int                 @id @default(autoincrement())
   nombre          String
   sigla           String?
   responsable     String?
-  activo          Boolean           @default(true)
+  activo          Boolean             @default(true)
   tipoProcesoId   Int
   descripcion     String?
-  tipoProceso     OrgTipoProceso    @relation(fields: [tipoProcesoId], references: [id])
+  tipoProceso     OrgTipoProceso      @relation(fields: [tipoProcesoId], references: [id])
   subdirecciones  OrgSubdireccion[]
   rats            Rat[]
   users           User[]
+  activos         ActivoInformacion[]
 }
 
 model OrgSubdireccion {
@@ -225,15 +318,20 @@ model OrgSubdireccion {
 }
 
 model OrgTipoProceso {
-  id             Int              @id @default(autoincrement())
-  nombre         String
-  descripcion    String?
-  activo         Boolean          @default(true)
-  dependencias   OrgDependencia[]
+  id           Int              @id @default(autoincrement())
+  nombre       String
+  descripcion  String?
+  activo       Boolean          @default(true)
+  dependencias OrgDependencia[]
 }
 
 enum RoleCode {
   ADMIN
+  ADMIN_TECNICO
+  ADMIN_FUNCIONAL
+  OPERADOR
+  REVISOR
+  APROBADOR_FUNCIONAL
   RESPONSABLE_DEPENDENCIA
   RESPONSABLE_SUBDIRECCION
   EDITOR_OPERATIVO

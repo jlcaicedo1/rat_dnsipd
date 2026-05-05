@@ -39,14 +39,18 @@ export function ActivityMapModal({
       <div className="report-preview-modal-dialog report-preview-modal-dialog-wide">
         <header className="report-preview-modal-header">
           <div>
-            <span className="brand-kicker">Mapa de relaciones</span>
+            <span className="brand-kicker">Grafo actividad-activo</span>
             <div className="page-title-with-icon page-title-with-icon-modal">
               <span className="page-title-icon">
                 <AppIcon name="map" size={20} strokeWidth={2.1} />
               </span>
               <h3 id="activity-map-title">{activity.nombre}</h3>
             </div>
-            <p className="page-copy">{activity.codigo}</p>
+            <div className="modal-title-meta">
+              <span className="pill">{activity.codigo}</span>
+              <span className="pill">{activity.ratCodigo}</span>
+              <span className="pill">{traceability.activos.length} activos</span>
+            </div>
           </div>
 
           <div className="report-preview-modal-actions">

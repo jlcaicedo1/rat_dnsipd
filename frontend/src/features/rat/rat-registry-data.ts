@@ -47,6 +47,7 @@ export type TreatmentReport = {
   codigoRat: string;
   nombreTratamiento: string;
   dependenciaResponsable: string;
+  dependenciaEjecutora?: string;
   procesoRelacionado: string;
   subproceso: string;
   estado: RecordStatus;
@@ -73,6 +74,11 @@ export type TreatmentReport = {
   paisDestino: string;
   mecanismoTransferencia: string;
   medidasSeguridad: string;
+  activoElectronico?: string;
+  activoFisico?: string;
+  tipoActivo?: string;
+  baseDatosRepositorio?: string;
+  activosInformacionAsociados?: string;
 };
 
 export type ActivityRegistryRecord = {
@@ -145,7 +151,7 @@ const ratRecords: RatRegistryRecord[] = [
         fechaActualizacion: "2026-04-22",
         responsables: ["DNAC", "Subdireccion de Afiliacion"],
         observaciones: [
-          "Base legal consolidada con normativa de afiliacion.",
+          "Base de licitud consolidada con normativa de afiliacion.",
           "Sin transferencias internacionales registradas.",
         ],
         pendientes: ["Validar proxima fecha de revision anual."],
@@ -353,7 +359,7 @@ const ratRecords: RatRegistryRecord[] = [
         responsables: ["DSGSIF", "Subdireccion de Vigilancia y Gestion de la Informacion"],
         observaciones: ["Pendiente documentar flujos completos de datos secundarios."],
         pendientes: [
-          "Ampliar base legitimadora para reutilizacion analitica.",
+          "Ampliar base de licitud para reutilizacion analitica.",
           "Definir responsables de calidad de dato.",
         ],
         report: {

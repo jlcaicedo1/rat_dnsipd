@@ -1,5 +1,9 @@
-import type { RefObject } from "react";
-import type { SignatureFieldState, TreatmentReport } from "./rat-registry-data";
+import { useEffect, type RefObject } from "react";
+import type {
+  ActivityRegistryRecord,
+  SignatureFieldState,
+  TreatmentReport,
+} from "./rat-registry-data";
 import { TreatmentReportPreview } from "./TreatmentReportPreview";
 
 type ReportPreviewModalProps = {
@@ -7,6 +11,7 @@ type ReportPreviewModalProps = {
   heading: string;
   report: TreatmentReport;
   signatures: SignatureFieldState;
+  activity?: ActivityRegistryRecord;
   onClose: () => void;
   onPrint: () => void;
   onDownload: () => void;
@@ -18,11 +23,29 @@ export function ReportPreviewModal({
   heading,
   report,
   signatures,
+  activity,
   onClose,
   onPrint,
   onDownload,
   surfaceRef,
 }: ReportPreviewModalProps) {
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (!isOpen) {
+      document.body.classList.remove("report-print-mode");
+      return;
+    }
+
+    document.body.classList.add("report-print-mode");
+
+    return () => {
+      document.body.classList.remove("report-print-mode");
+    };
+  }, [isOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -42,7 +65,7 @@ export function ReportPreviewModal({
             <span className="brand-kicker">Vista previa del reporte</span>
             <h3 id="report-preview-title">{heading}</h3>
             <p className="page-copy">
-              Revise el contenido, formato y disposicion final del documento antes de imprimirlo o descargarlo.
+              Revise el contenido, formato y disposicion final del documento antes de imprimirlo o guardarlo como PDF.
             </p>
           </div>
 
@@ -51,16 +74,17 @@ export function ReportPreviewModal({
               Cerrar
             </button>
             <button type="button" className="button-secondary" onClick={onDownload}>
-              Descargar
+              Descargar vista
             </button>
             <button type="button" className="button-primary" onClick={onPrint}>
-              Imprimir documento
+              Imprimir / PDF
             </button>
           </div>
         </header>
 
         <div className="report-preview-modal-body">
           <TreatmentReportPreview
+            activity={activity}
             heading={heading}
             readOnly
             report={report}

@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
 import { apiClient } from "../../services/api-client";
 import type { AuditLog } from "./audit.types";
@@ -65,7 +66,7 @@ export function AuditLogPage() {
 
   const selectedLog = logs.find((log) => log.id === selectedLogId) ?? logs[0] ?? null;
 
-  const summary = useMemo(() => {
+  const summary = useMemo<ExecutiveKpiItem[]>(() => {
     const uniqueActors = new Set(logs.map((log) => log.actor).filter(Boolean));
     const uniqueModules = new Set(logs.map((log) => log.modulo));
     const criticalActions = logs.filter((log) =>
@@ -73,10 +74,35 @@ export function AuditLogPage() {
     ).length;
 
     return [
-      { label: "Registros listados", value: String(logs.length) },
-      { label: "Actores visibles", value: String(uniqueActors.size) },
-      { label: "Modulos visibles", value: String(uniqueModules.size) },
-      { label: "Acciones sensibles", value: String(criticalActions) },
+      {
+        label: "Eventos listados",
+        value: logs.length,
+        context: "Trazas visibles para el filtro actual.",
+        icon: "audit",
+        tone: "neutral",
+      },
+      {
+        label: "Actores visibles",
+        value: uniqueActors.size,
+        context: "Usuarios o servicios con actividad registrada.",
+        icon: "owner",
+        tone: "neutral",
+      },
+      {
+        label: "Modulos visibles",
+        value: uniqueModules.size,
+        context: "Cobertura funcional de la auditoria actual.",
+        icon: "dashboard",
+        tone: "neutral",
+      },
+      {
+        label: "Acciones sensibles",
+        value: criticalActions,
+        context: "Archivos, eliminaciones y cambios de estado.",
+        icon: "risks",
+        tone: criticalActions > 0 ? "critical" : "success",
+        emphasize: criticalActions > 0,
+      },
     ];
   }, [logs]);
 
@@ -93,14 +119,7 @@ export function AuditLogPage() {
         </div>
       </header>
 
-      <div className="summary-grid">
-        {summary.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      <ExecutiveKpiGrid items={summary} />
 
       <form
         className="panel filter-grid"

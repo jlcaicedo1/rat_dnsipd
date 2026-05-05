@@ -18,6 +18,7 @@ export type OrgUnit = {
   ownerRole: string;
 };
 
+const ORG_UNIT_STORAGE_KEY = "dnsipd:organization-units";
 const ORG_UNIT_STATUS_STORAGE_KEY = "dnsipd:organization-unit-statuses";
 
 const orgUnits: OrgUnit[] = [
@@ -695,6 +696,12 @@ const orgUnits: OrgUnit[] = [
 ];
 
 export function getOrganizationUnits() {
+  const persistedUnits = readOrganizationUnitsSnapshot();
+
+  if (persistedUnits.length > 0) {
+    return persistedUnits;
+  }
+
   const overrides = readOrganizationStatusOverrides();
 
   return orgUnits.map((unit) => ({
@@ -708,14 +715,43 @@ export function saveOrganizationUnits(units: OrgUnit[]) {
     return;
   }
 
-  const defaultStatuses = Object.fromEntries(orgUnits.map((unit) => [unit.id, unit.status]));
-  const overrides = Object.fromEntries(
-    units
-      .filter((unit) => defaultStatuses[unit.id] !== unit.status)
-      .map((unit) => [unit.id, unit.status]),
-  );
+  window.localStorage.setItem(ORG_UNIT_STORAGE_KEY, JSON.stringify(units));
+  window.localStorage.removeItem(ORG_UNIT_STATUS_STORAGE_KEY);
+}
 
-  window.localStorage.setItem(ORG_UNIT_STATUS_STORAGE_KEY, JSON.stringify(overrides));
+function readOrganizationUnitsSnapshot() {
+  if (typeof window === "undefined") {
+    return [] as OrgUnit[];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ORG_UNIT_STORAGE_KEY);
+    if (!rawValue) {
+      return [] as OrgUnit[];
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<OrgUnit>[];
+    if (!Array.isArray(parsed)) {
+      return [] as OrgUnit[];
+    }
+
+    const persistedEntries: Array<[string, OrgUnit]> = [];
+
+    for (const unit of parsed) {
+      const sanitizedUnit = sanitizeOrganizationUnit(unit);
+      if (!sanitizedUnit) {
+        continue;
+      }
+
+      persistedEntries.push([sanitizedUnit.id, sanitizedUnit]);
+    }
+
+    const persistedById = Object.fromEntries(persistedEntries);
+
+    return orgUnits.map((unit) => persistedById[unit.id] ?? unit);
+  } catch {
+    return [] as OrgUnit[];
+  }
 }
 
 function readOrganizationStatusOverrides() {
@@ -739,4 +775,39 @@ function readOrganizationStatusOverrides() {
   } catch {
     return {} as Record<string, OrgUnitStatus>;
   }
+}
+
+function sanitizeOrganizationUnit(unit: Partial<OrgUnit>) {
+  if (
+    typeof unit.id !== "string" ||
+    typeof unit.nombre !== "string" ||
+    typeof unit.tipo !== "string" ||
+    typeof unit.ownerRole !== "string" ||
+    (unit.status !== "Activa" && unit.status !== "Inactiva")
+  ) {
+    return null;
+  }
+
+  return {
+    id: unit.id,
+    nombre: normalizeText(unit.nombre),
+    sigla: normalizeOptionalText(unit.sigla),
+    tipo: unit.tipo as OrgUnitType,
+    parentId: typeof unit.parentId === "string" ? unit.parentId : undefined,
+    status: unit.status,
+    ownerRole: normalizeText(unit.ownerRole),
+  } satisfies OrgUnit;
+}
+
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeOptionalText(value?: string) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = normalizeText(value);
+  return normalized.length > 0 ? normalized : undefined;
 }

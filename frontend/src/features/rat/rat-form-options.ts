@@ -5,9 +5,9 @@ export const RAT_FORM_STEPS = [
     help: "Defina el RAT, la unidad responsable y la unidad ejecutora desde estructura organica controlada.",
   },
   {
-    title: "Finalidad y base legal",
+    title: "Finalidad y base de licitud",
     caption: "Finalidad especifica y base de licitud",
-    help: "La finalidad debe ser concreta y la base legal debe venir de una opcion controlada.",
+    help: "La finalidad debe ser concreta y la base de licitud debe venir de una opcion controlada.",
   },
   {
     title: "Titulares",
@@ -25,8 +25,8 @@ export const RAT_FORM_STEPS = [
     help: "Describa procedencia, operaciones, volumen, frecuencia, permanencia y alcance geografico.",
   },
   {
-    title: "Transferencias",
-    caption: "Terceros y flujos externos",
+    title: "Terceros y transferencias",
+    caption: "Terceros, encargados y flujos externos",
     help: "Solo complete esta seccion si existe acceso, encargo, comunicacion o transferencia de datos.",
   },
   {

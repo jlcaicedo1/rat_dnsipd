@@ -23,13 +23,21 @@ export class ActividadesController {
   constructor(private readonly actividadesService: ActividadesService) {}
 
   @Get('actividades')
-  findAll(@Query() query: QueryActividadDto) {
-    return this.actividadesService.findAll(query);
+  @UseGuards(JwtAuthGuard)
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryActividadDto,
+  ) {
+    return this.actividadesService.findAll(query, user);
   }
 
   @Get('actividades/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadesService.findOne(id);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadesService.findOne(id, user);
   }
 
   @Post('rats/:ratId/actividades')
@@ -63,12 +71,20 @@ export class ActividadesController {
   }
 
   @Get('actividades/:id/versiones')
-  findVersiones(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadesService.findVersiones(id);
+  @UseGuards(JwtAuthGuard)
+  findVersiones(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadesService.findVersiones(id, user);
   }
 
   @Get('actividades/:id/detail')
-  detail(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadesService.detail(id);
+  @UseGuards(JwtAuthGuard)
+  detail(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadesService.detail(id, user);
   }
 }

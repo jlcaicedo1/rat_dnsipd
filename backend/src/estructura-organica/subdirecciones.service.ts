@@ -4,6 +4,9 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
+import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubdireccionDto } from './dto/create-subdireccion.dto';
 import { UpdateSubdireccionDto } from './dto/update-subdireccion.dto';
@@ -16,11 +19,18 @@ type FindSubdireccionesInput = {
 
 @Injectable()
 export class SubdireccionesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
+  ) {}
 
-  async findAll(filters: FindSubdireccionesInput) {
+  async findAll(filters: FindSubdireccionesInput, actor: AuthenticatedUser) {
+    const dependenciaId = this.authz.isGlobal(actor)
+      ? filters.dependenciaId
+      : this.getActorDependenciaId(actor);
     const where: Prisma.OrgSubdireccionWhereInput = {
-      ...(filters.dependenciaId ? { dependenciaId: filters.dependenciaId } : {}),
+      ...(dependenciaId ? { dependenciaId } : {}),
       ...(filters.activo !== undefined ? { activo: filters.activo } : {}),
       ...(filters.search
         ? {
@@ -49,7 +59,7 @@ export class SubdireccionesService {
     return { data };
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, actor: AuthenticatedUser) {
     const data = await this.prisma.orgSubdireccion.findUnique({
       where: { id },
       include: {
@@ -61,10 +71,13 @@ export class SubdireccionesService {
       throw new NotFoundException('Subdireccion no encontrada');
     }
 
+    this.authz.assertCanUseDependencia(actor, data.dependenciaId);
+
     return { data };
   }
 
-  async create(dto: CreateSubdireccionDto) {
+  async create(dto: CreateSubdireccionDto, actor?: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
     await this.ensureDependencia(dto.dependenciaId);
 
     const createData: Prisma.OrgSubdireccionUncheckedCreateInput = {
@@ -76,18 +89,34 @@ export class SubdireccionesService {
       activo: dto.activo ?? true,
     };
 
-    const data = await this.prisma.orgSubdireccion.create({
-      data: createData,
-      include: {
-        dependencia: true,
-      },
+    const data = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.orgSubdireccion.create({
+        data: createData,
+        include: {
+          dependencia: true,
+        },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgSubdireccion',
+        entidadId: created.id,
+        accion: 'CREATE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Creacion de subdireccion',
+        afterData: created,
+      });
+
+      return created;
     });
 
     return { data };
   }
 
-  async update(id: number, dto: UpdateSubdireccionDto) {
-    await this.ensureExists(id);
+  async update(id: number, dto: UpdateSubdireccionDto, actor?: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
+    const current = await this.ensureExists(id);
 
     if (dto.dependenciaId !== undefined) {
       await this.ensureDependencia(dto.dependenciaId);
@@ -108,19 +137,36 @@ export class SubdireccionesService {
       ...(dto.activo !== undefined ? { activo: dto.activo } : {}),
     };
 
-    const data = await this.prisma.orgSubdireccion.update({
-      where: { id },
-      data: updateData,
-      include: {
-        dependencia: true,
-      },
+    const data = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.orgSubdireccion.update({
+        where: { id },
+        data: updateData,
+        include: {
+          dependencia: true,
+        },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgSubdireccion',
+        entidadId: id,
+        accion: 'UPDATE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Actualizacion de subdireccion',
+        beforeData: current,
+        afterData: updated,
+      });
+
+      return updated;
     });
 
     return { data };
   }
 
-  async findRats(id: number) {
-    await this.ensureExists(id);
+  async findRats(id: number, actor: AuthenticatedUser) {
+    const subdireccion = await this.ensureExists(id);
+    this.authz.assertCanUseDependencia(actor, subdireccion.dependenciaId);
 
     const data = await this.prisma.rat.findMany({
       where: { subdireccionId: id },
@@ -145,6 +191,16 @@ export class SubdireccionesService {
     }
 
     return entity;
+  }
+
+  private getActorDependenciaId(actor: AuthenticatedUser) {
+    if (!actor.dependenciaId) {
+      throw new UnprocessableEntityException(
+        'El usuario no tiene dependencia asignada para consultar subdirecciones.',
+      );
+    }
+
+    return actor.dependenciaId;
   }
 
   private async ensureDependencia(id: number) {

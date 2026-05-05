@@ -2,7 +2,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type UIEvent,
 } from "react";
@@ -97,10 +96,7 @@ export function TableScrollFrame({
   };
 
   return (
-    <div
-      className="table-scroll-shell"
-      style={{ ["--table-viewport-height" as string]: maxHeight } as CSSProperties}
-    >
+    <div className="table-scroll-shell">
       {hasOverflow ? (
         <div
           ref={railRef}
@@ -118,6 +114,7 @@ export function TableScrollFrame({
           .filter(Boolean)
           .join(" ")}
         onScroll={handleViewportScroll}
+        data-max-height={maxHeight}
       >
         {children}
       </div>

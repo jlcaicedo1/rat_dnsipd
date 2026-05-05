@@ -21,10 +21,12 @@ export class EipdController {
   constructor(private readonly eipdService: EipdService) {}
 
   @Get('actividad-versiones/:actividadVersionId/eipd')
+  @UseGuards(JwtAuthGuard)
   findByActividadVersion(
     @Param('actividadVersionId', ParseIntPipe) actividadVersionId: number,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.eipdService.findByActividadVersion(actividadVersionId);
+    return this.eipdService.findByActividadVersion(actividadVersionId, user);
   }
 
   @Post('actividad-versiones/:actividadVersionId/eipd')
@@ -38,8 +40,12 @@ export class EipdController {
   }
 
   @Get('eipd/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.eipdService.findOne(id);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.eipdService.findOne(id, user);
   }
 
   @Patch('eipd/:id')

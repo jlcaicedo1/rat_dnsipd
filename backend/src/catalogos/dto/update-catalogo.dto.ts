@@ -3,6 +3,10 @@ import { IsBoolean, IsOptional, IsString } from 'class-validator';
 export class UpdateCatalogoDto {
   @IsOptional()
   @IsString()
+  dominio?: string;
+
+  @IsOptional()
+  @IsString()
   tipo?: string;
 
   @IsOptional()

@@ -1,29 +1,38 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { useAuthStore } from "../auth/auth-store";
+import { getRoleCapabilities } from "../auth/permissions";
 import { ReportPreviewModal } from "./ReportPreviewModal";
 import {
   defaultSignatureFields,
-  getDependenciaOptions,
   getRatRegistryRecords,
   getRatStatusOptions,
   type RatRegistryRecord,
   type SignatureFieldState,
 } from "./rat-registry-data";
+import { buildRegistryWorkspace, createRatVersion, persistRatStatus } from "./registry-workspace";
 import { buildReportPreviewDocument } from "./TreatmentReportPreview";
+import { seedTreatmentDraftFromActivity } from "./treatment-draft-storage";
 
 export function RatListPage() {
-  const ratRecords = getRatRegistryRecords();
-  const dependenciaOptions = getDependenciaOptions();
+  const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const roleCapabilities = getRoleCapabilities(user?.role);
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const ratRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), [workspaceVersion]);
+  const dependenciaOptions = useMemo(
+    () => Array.from(new Set(ratRecords.map((item) => item.dependencia))).sort(),
+    [ratRecords],
+  );
   const statusOptions = getRatStatusOptions();
 
   const [search, setSearch] = useState("");
   const [dependencia, setDependencia] = useState("Todas");
   const [estado, setEstado] = useState("Todos");
-  const [selectedRatId, setSelectedRatId] = useState<number>(ratRecords[0]?.id ?? 0);
-  const [selectedActivityId, setSelectedActivityId] = useState<number>(
-    ratRecords[0]?.activities[0]?.id ?? 0,
-  );
+  const [selectedRatId, setSelectedRatId] = useState<number | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
@@ -40,26 +49,30 @@ export function RatListPage() {
     return matchesSearch && matchesDependencia && matchesEstado;
   });
 
-  const selectedRat =
-    filteredRats.find((item) => item.id === selectedRatId) ?? filteredRats[0] ?? null;
+  const selectedRat = filteredRats.find((item) => item.id === selectedRatId) ?? null;
   const selectedActivity =
-    selectedRat?.activities.find((item) => item.id === selectedActivityId) ??
-    selectedRat?.activities[0] ??
-    null;
+    selectedRat?.activities.find((item) => item.id === selectedActivityId) ?? null;
+
+  useEffect(() => {
+    if (selectedRatId === null) {
+      return;
+    }
+
+    if (!filteredRats.some((item) => item.id === selectedRatId)) {
+      setSelectedRatId(null);
+      setSelectedActivityId(null);
+    }
+  }, [filteredRats, selectedRatId]);
 
   useEffect(() => {
     if (!selectedRat) {
       return;
     }
 
-    if (selectedRat.id !== selectedRatId) {
-      setSelectedRatId(selectedRat.id);
-    }
-
     if (!selectedRat.activities.some((item) => item.id === selectedActivityId)) {
-      setSelectedActivityId(selectedRat.activities[0]?.id ?? 0);
+      setSelectedActivityId(selectedRat.activities[0]?.id ?? null);
     }
-  }, [selectedActivityId, selectedRat, selectedRatId]);
+  }, [selectedActivityId, selectedRat]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -94,21 +107,33 @@ export function RatListPage() {
 
   const signatures = buildSignatureFields(selectedRat);
 
-  const stats = [
-    { label: "RAT registrados", value: String(ratRecords.length) },
-    {
-      label: "RAT vigentes",
-      value: String(ratRecords.filter((item) => item.estado === "Vigente").length),
-    },
-    {
-      label: "Alto riesgo",
-      value: String(ratRecords.filter((item) => item.riesgo === "Alto").length),
-    },
-    {
-      label: "Con EIPD",
-      value: String(ratRecords.filter((item) => item.requiereEipd).length),
-    },
-  ];
+  const stats = useMemo<ExecutiveKpiItem[]>(
+    () => [
+      {
+        label: "RAT registrados",
+        value: ratRecords.length,
+        tone: "neutral",
+      },
+      {
+        label: "Vigentes",
+        value: ratRecords.filter((item) => item.estado === "Vigente").length,
+        tone: "success",
+      },
+      {
+        label: "En revision",
+        value: ratRecords.filter((item) => item.estado === "En revision").length,
+        tone:
+          ratRecords.some((item) => item.estado === "En revision") ? "warning" : "neutral",
+      },
+      {
+        label: "Archivados",
+        value: ratRecords.filter((item) => item.estado === "Archivado").length,
+        tone:
+          ratRecords.some((item) => item.estado === "Archivado") ? "warning" : "neutral",
+      },
+    ],
+    [ratRecords],
+  );
 
   return (
     <section className="registry-page">
@@ -120,23 +145,24 @@ export function RatListPage() {
             Aqui debe vivir el inventario formal de RAT: estado, riesgo, EIPD, actividades
             asociadas y ficha imprimible de aprobacion.
           </p>
+          <p className="permission-hint">
+            Rol actual: <strong>{roleCapabilities.label}</strong>.{" "}
+            {roleCapabilities.rats.version
+              ? "Puede versionar y archivar RAT institucionales."
+              : "Puede consultar la ficha y, si corresponde, volver al tratamiento base."}
+          </p>
         </div>
 
         <div className="registry-header-actions">
-          <Link to="/rats/new" className="button-primary">
-            Nuevo RAT
-          </Link>
+          {roleCapabilities.activities.create ? (
+            <Link to="/actividades/nuevo" className="button-primary">
+              Nuevo tratamiento base
+            </Link>
+          ) : null}
         </div>
       </header>
 
-      <div className="summary-grid">
-        {stats.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      <ExecutiveKpiGrid items={stats} />
 
       <div className="registry-shell">
         <section className="panel registry-list-pane">
@@ -188,6 +214,85 @@ export function RatListPage() {
             </label>
           </div>
 
+          <div
+            className={
+              selectedRat ? "selection-action-bar selection-action-bar-active" : "selection-action-bar"
+            }
+            aria-live="polite"
+          >
+            {selectedRat ? (
+              <>
+                <div className="selection-action-copy">
+                  <span className="brand-kicker">RAT seleccionado</span>
+                  <strong>
+                    {selectedRat.codigo} · {selectedRat.nombre}
+                  </strong>
+                  <small>
+                    {selectedRat.dependencia} · {selectedRat.unidadResponsable}
+                  </small>
+                </div>
+
+                <div className="selection-action-meta">
+                  <StatusBadge value={selectedRat.estado} />
+                  <RiskBadge value={selectedRat.riesgo} />
+                  <EipdBadge value={selectedRat.requiereEipd} />
+                </div>
+
+                <div className="selection-action-buttons">
+                  {roleCapabilities.rats.editBase && selectedRat.activities[0] ? (
+                    <button
+                      type="button"
+                      className="button-table-action"
+                      onClick={() => {
+                        seedTreatmentDraftFromActivity(selectedRat.activities[0], "edit");
+                        navigate(`/actividades/nuevo?mode=edit&source=${selectedRat.activities[0].id}`);
+                      }}
+                    >
+                      Editar base
+                    </button>
+                  ) : null}
+                  {roleCapabilities.rats.version ? (
+                    <button
+                      type="button"
+                      className="button-table-action button-table-action-secondary"
+                      onClick={() => {
+                        const versionedRat = createRatVersion(selectedRat);
+                        setSelectedRatId(versionedRat.id);
+                        setSelectedActivityId(versionedRat.activities[0]?.id ?? null);
+                        setWorkspaceVersion((current) => current + 1);
+                      }}
+                    >
+                      Versionar
+                    </button>
+                  ) : null}
+                  {roleCapabilities.rats.archive && selectedRat.estado !== "Archivado" ? (
+                    <button
+                      type="button"
+                      className="button-table-action button-table-action-danger"
+                      onClick={() => {
+                        persistRatStatus(selectedRat.id, "Archivado");
+                        setWorkspaceVersion((current) => current + 1);
+                      }}
+                    >
+                      Archivar
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="button-table-action"
+                    onClick={() => setIsPreviewOpen(true)}
+                  >
+                    Vista previa
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="selection-action-empty">
+                Seleccione un RAT para habilitar acciones documentales y de versionado.
+              </p>
+            )}
+          </div>
+
           <TableScrollFrame className="table-wrapper-matrix" maxHeight="64vh">
             <table className="registry-table registry-table-rats">
               <thead>
@@ -208,8 +313,16 @@ export function RatListPage() {
                   return (
                     <tr
                       key={record.id}
-                      className={isSelected ? "table-row-selected" : undefined}
+                      className={isSelected ? "table-row-selected table-row-interactive" : "table-row-interactive"}
+                      tabIndex={0}
+                      aria-selected={isSelected}
                       onClick={() => setSelectedRatId(record.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedRatId(record.id);
+                        }
+                      }}
                     >
                       <td>
                         <strong>{record.codigo}</strong>
@@ -342,6 +455,18 @@ export function RatListPage() {
                 >
                   Imprimir ficha
                 </button>
+                {roleCapabilities.rats.editBase ? (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => {
+                      seedTreatmentDraftFromActivity(selectedActivity, "edit");
+                      navigate(`/actividades/nuevo?mode=edit&source=${selectedActivity.id}`);
+                    }}
+                  >
+                    Editar tratamiento base
+                  </button>
+                ) : null}
               </div>
 
               <p className="registry-document-note">
@@ -358,7 +483,8 @@ export function RatListPage() {
 
       {selectedRat && selectedActivity ? (
         <ReportPreviewModal
-          heading={`Ficha del tratamiento · ${selectedActivity.nombre}`}
+          activity={selectedActivity}
+          heading={`Registro de actividad · ${selectedActivity.codigo}`}
           isOpen={isPreviewOpen}
           onClose={() => setIsPreviewOpen(false)}
           onDownload={() => {
@@ -369,7 +495,7 @@ export function RatListPage() {
             }
 
             const documentHtml = buildReportPreviewDocument(
-              `Ficha ${selectedActivity.report.codigoRat}`,
+              `Registro ${selectedActivity.codigo}`,
               surfaceMarkup,
             );
             const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
@@ -377,7 +503,7 @@ export function RatListPage() {
             const link = document.createElement("a");
 
             link.href = objectUrl;
-            link.download = `${selectedActivity.report.codigoRat}-${slugify(selectedActivity.nombre)}.html`;
+            link.download = `${selectedActivity.codigo}-${slugify(selectedActivity.nombre)}.html`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -385,7 +511,12 @@ export function RatListPage() {
           }}
           onPrint={() => {
             if (typeof window !== "undefined") {
+              const originalTitle = document.title;
+              document.title = `Registro ${selectedActivity.codigo}`;
               window.print();
+              window.setTimeout(() => {
+                document.title = originalTitle;
+              }, 250);
             }
           }}
           report={selectedActivity.report}

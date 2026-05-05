@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppIcon } from "../../components/AppIcon";
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { useAuthStore } from "../auth/auth-store";
+import { getRoleCapabilities } from "../auth/permissions";
 import {
   getActivityRegistryRecords,
   getRatRegistryRecords,
@@ -15,26 +19,51 @@ import {
   type OrgUnitType,
 } from "./organization-structure-data";
 
+type PendingOrgUnitChange = Partial<Pick<OrgUnit, "nombre" | "sigla" | "ownerRole" | "status">>;
+
 export function OrganizationStructurePage() {
+  const [searchParams] = useSearchParams();
+  const user = useAuthStore((state) => state.user);
+  const roleCapabilities = getRoleCapabilities(user?.role);
   const [units, setUnits] = useState(() => getOrganizationUnits());
-  const [pendingStatusById, setPendingStatusById] = useState<Record<string, OrgUnitStatus>>({});
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"Todas" | OrgUnitStatus>("Todas");
-  const [typeFilter, setTypeFilter] = useState<"Todos" | OrgUnitType>("Todos");
-  const [detailUnitId, setDetailUnitId] = useState<string | null>(null);
+  const [pendingChangesById, setPendingChangesById] = useState<
+    Record<string, PendingOrgUnitChange>
+  >({});
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState<"Todas" | OrgUnitStatus>(
+    () => (searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas",
+  );
+  const [typeFilter, setTypeFilter] = useState<"Todos" | OrgUnitType>(
+    () => (searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos",
+  );
+  const [usageFilter, setUsageFilter] = useState<"Todos" | "Con RAT" | "Sin uso">(
+    () => {
+      const usage = searchParams.get("uso");
+      if (usage === "con-rat") {
+        return "Con RAT";
+      }
+      if (usage === "sin-uso") {
+        return "Sin uso";
+      }
+      return "Todos";
+    },
+  );
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
 
   const ratRecords = getRatRegistryRecords();
   const activityRecords = getActivityRegistryRecords();
 
-  const displayedUnits = useMemo(
-    () =>
-      units.map((unit) =>
-        pendingStatusById[unit.id] ? { ...unit, status: pendingStatusById[unit.id] } : unit,
-      ),
-    [pendingStatusById, units],
+  const unitsById = useMemo(
+    () => Object.fromEntries(units.map((unit) => [unit.id, unit])),
+    [units],
   );
 
-  const unitsById = useMemo(
+  const displayedUnits = useMemo(
+    () => units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id])),
+    [pendingChangesById, units],
+  );
+
+  const displayedUnitsById = useMemo(
     () => Object.fromEntries(displayedUnits.map((unit) => [unit.id, unit])),
     [displayedUnits],
   );
@@ -60,15 +89,41 @@ export function OrganizationStructurePage() {
 
     return displayedUnits.filter((unit) => {
       const matchesSearch = normalizedSearch.length === 0 || isMatch(unit, normalizedSearch);
-      const matchesStatus = isStatusVisible(unit, statusFilter);
-      const matchesType = isTypeVisible(unit, typeFilter);
+      const matchesStatus = statusFilter === "Todas" || unit.status === statusFilter;
+      const matchesType = typeFilter === "Todos" || unit.tipo === typeFilter;
+      const linkedRats = countLinkedRats(unit, ratRecords);
+      const linkedActivities = countLinkedActivities(unit, activityRecords);
+      const matchesUsage =
+        usageFilter === "Todos" ||
+        (usageFilter === "Con RAT" ? linkedRats > 0 : linkedRats === 0 && linkedActivities === 0);
 
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesStatus && matchesType && matchesUsage;
     });
-  }, [displayedUnits, search, statusFilter, typeFilter]);
+  }, [activityRecords, displayedUnits, ratRecords, search, statusFilter, typeFilter, usageFilter]);
 
-  const hasPendingStatusChanges = Object.keys(pendingStatusById).length > 0;
-  const detailUnit = detailUnitId ? unitsById[detailUnitId] ?? null : null;
+  const hasPendingChanges = Object.keys(pendingChangesById).length > 0;
+  const activeUnit = activeUnitId ? displayedUnitsById[activeUnitId] ?? null : null;
+  const activeUnitPendingChange = activeUnitId ? pendingChangesById[activeUnitId] : undefined;
+  if (!roleCapabilities.organization.view) {
+    return (
+      <section className="panel access-panel">
+        <span className="brand-kicker">Acceso restringido</span>
+        <h2>Administracion de dependencias</h2>
+        <p className="page-copy">
+          Esta vista queda reservada para perfiles administradores porque afecta maestros,
+          permisos, filtros y disponibilidad de nuevas dependencias dentro del sistema.
+        </p>
+      </section>
+    );
+  }
+
+  useEffect(() => {
+    setSearch(searchParams.get("q") ?? "");
+    setStatusFilter((searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas");
+    setTypeFilter((searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos");
+    const usage = searchParams.get("uso");
+    setUsageFilter(usage === "con-rat" ? "Con RAT" : usage === "sin-uso" ? "Sin uso" : "Todos");
+  }, [searchParams]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -77,52 +132,109 @@ export function OrganizationStructurePage() {
 
     const previousOverflow = document.body.style.overflow;
 
-    if (detailUnit) {
+    if (activeUnit) {
       document.body.style.overflow = "hidden";
     }
 
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [detailUnit]);
+  }, [activeUnit]);
 
   useEffect(() => {
-    if (!detailUnit || typeof window === "undefined") {
+    if (!activeUnit || typeof window === "undefined") {
       return;
     }
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setDetailUnitId(null);
+        setActiveUnitId(null);
       }
     };
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [detailUnit]);
+  }, [activeUnit]);
 
-  const stats = [
+  const stats: ExecutiveKpiItem[] = [
     {
-      label: "Unidades totales",
-      value: String(displayedUnits.length),
-      icon: "organization" as const,
+      label: "Total dependencias",
+      value: displayedUnits.length,
+      tone: "neutral",
     },
     {
       label: "Activas",
-      value: String(displayedUnits.filter((unit) => unit.status === "Activa").length),
-      icon: "settings" as const,
+      value: displayedUnits.filter((unit) => unit.status === "Activa").length,
+      tone: "success",
     },
     {
       label: "Inactivas",
-      value: String(displayedUnits.filter((unit) => unit.status === "Inactiva").length),
-      icon: "impact" as const,
+      value: displayedUnits.filter((unit) => unit.status === "Inactiva").length,
+      tone:
+        displayedUnits.some((unit) => unit.status === "Inactiva") ? "warning" : "neutral",
     },
     {
-      label: "Siglas definidas",
-      value: String(displayedUnits.filter((unit) => Boolean(unit.sigla)).length),
-      icon: "catalogs" as const,
+      label: "Sin uso",
+      value: displayedUnits.filter(
+        (unit) =>
+          countLinkedRats(unit, ratRecords) === 0 &&
+          countLinkedActivities(unit, activityRecords) === 0,
+      ).length,
+      tone: "neutral",
     },
   ];
+
+  function handleSaveAllChanges() {
+    const nextUnits = units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id]));
+
+    setUnits(nextUnits);
+    saveOrganizationUnits(nextUnits);
+    setPendingChangesById({});
+  }
+
+  function handleQueueStatusChange(unit: OrgUnit) {
+    if (!roleCapabilities.organization.updateStatus) {
+      return;
+    }
+
+    applyPendingChanges(unit.id, { status: unit.status === "Activa" ? "Inactiva" : "Activa" });
+  }
+
+  function applyPendingChanges(unitId: string, changes: PendingOrgUnitChange) {
+    const originalUnit = unitsById[unitId];
+
+    if (!originalUnit) {
+      return;
+    }
+
+    setPendingChangesById((current) => {
+      const next = { ...current };
+      const normalized = getNormalizedPendingChange(originalUnit, {
+        ...current[unitId],
+        ...changes,
+      });
+
+      if (normalized) {
+        next[unitId] = normalized;
+      } else {
+        delete next[unitId];
+      }
+
+      return next;
+    });
+  }
+
+  function resetPendingChanges(unitId: string) {
+    setPendingChangesById((current) => {
+      if (!current[unitId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[unitId];
+      return next;
+    });
+  }
 
   return (
     <section className="org-page">
@@ -136,50 +248,34 @@ export function OrganizationStructurePage() {
             <h2>Administracion de dependencias</h2>
           </div>
           <p className="page-copy">
-            Tabla centralizada para activar, deshabilitar y revisar el detalle de las
-            unidades organizacionales sin desperdiciar espacio en paneles paralelos.
+            La estructura organica se gestiona como maestro transversal desde una sola tabla:
+            cambio rapido de estado, detalle contextual y persistencia administrativa centralizada.
+          </p>
+          <p className="permission-hint">
+            Rol actual: <strong>{roleCapabilities.label}</strong>. Los cambios quedan en borrador
+            hasta confirmar el guardado general del modulo.
           </p>
         </div>
 
         <div className="registry-header-actions">
-          <button
-            type="button"
-            className="button-primary"
-            disabled={!hasPendingStatusChanges}
-            onClick={() => {
-              const nextUnits = units.map((unit) =>
-                pendingStatusById[unit.id]
-                  ? { ...unit, status: pendingStatusById[unit.id] }
-                  : unit,
-              );
-
-              setUnits(nextUnits);
-              saveOrganizationUnits(nextUnits);
-              setPendingStatusById({});
-            }}
-          >
-            Guardar estado actual
-          </button>
+          {roleCapabilities.organization.save ? (
+            <button
+              type="button"
+              className="button-primary"
+              disabled={!hasPendingChanges}
+              onClick={handleSaveAllChanges}
+            >
+              Guardar cambios
+            </button>
+          ) : null}
         </div>
       </header>
 
-      <div className="summary-grid">
-        {stats.map((item) => (
-          <article key={item.label} className="stat-card">
-            <div className="stat-card-top">
-              <span>{item.label}</span>
-              <span className="stat-card-icon">
-                <AppIcon name={item.icon} size={18} strokeWidth={2.1} />
-              </span>
-            </div>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      <ExecutiveKpiGrid items={stats} />
 
       <div className="org-toolbar panel">
         <label className="field">
-          <span>Buscar unidad o sigla</span>
+          <span>Buscar dependencia o sigla</span>
           <input
             className="input"
             placeholder="Ej. DSGSIF, DNTI, salud, patrocinio"
@@ -216,27 +312,38 @@ export function OrganizationStructurePage() {
             ))}
           </select>
         </label>
+
+        <label className="field">
+          <span>Uso</span>
+          <select
+            className="input"
+            value={usageFilter}
+            onChange={(event) => setUsageFilter(event.target.value as "Todos" | "Con RAT" | "Sin uso")}
+          >
+            <option value="Todos">Todos</option>
+            <option value="Con RAT">Con RAT</option>
+            <option value="Sin uso">Sin uso</option>
+          </select>
+        </label>
       </div>
 
       <section className="panel org-admin-single">
         <div className="panel-heading panel-heading-compact">
           <div>
             <span className="brand-kicker">Tabla maestra</span>
-            <h3>Dependencias y unidades organizacionales</h3>
+            <h3>Dependencias de la estructura organizacional</h3>
           </div>
           <div className="actions">
             <span className="pill">{maintenanceUnits.length} registros filtrados</span>
-            {hasPendingStatusChanges ? (
-              <span className="pill pill-muted">Cambios pendientes</span>
-            ) : null}
+            {hasPendingChanges ? <span className="pill pill-muted">Cambios pendientes</span> : null}
           </div>
         </div>
 
-        <TableScrollFrame className="table-wrapper-matrix" maxHeight="69vh">
+        <TableScrollFrame className="table-wrapper-matrix" maxHeight="none">
           <table className="registry-table org-admin-table">
             <thead>
               <tr>
-                <th>Unidad</th>
+                <th>Dependencia</th>
                 <th>Sigla</th>
                 <th>Tipo</th>
                 <th>Padre</th>
@@ -250,10 +357,8 @@ export function OrganizationStructurePage() {
               {maintenanceUnits.map((unit) => {
                 const linkedRats = countLinkedRats(unit, ratRecords);
                 const linkedActivities = countLinkedActivities(unit, activityRecords);
-                const parentName = unit.parentId
-                  ? unitsById[unit.parentId]?.nombre ?? "N/A"
-                  : "Raiz";
-                const persistedUnit = units.find((item) => item.id === unit.id) ?? unit;
+                const parentName = unit.parentId ? displayedUnitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz";
+                const hasPendingUnitChanges = Boolean(pendingChangesById[unit.id]);
 
                 return (
                   <tr key={unit.id}>
@@ -264,15 +369,20 @@ export function OrganizationStructurePage() {
                     <td>{unit.tipo}</td>
                     <td>{parentName}</td>
                     <td>
-                      <span
-                        className={
-                          unit.status === "Activa"
-                            ? "pill status-pill-vigente"
-                            : "pill status-pill-archivado"
-                        }
-                      >
-                        {unit.status}
-                      </span>
+                      <div className="org-status-stack">
+                        <span
+                          className={
+                            unit.status === "Activa"
+                              ? "pill status-pill-vigente"
+                              : "pill status-pill-archivado"
+                          }
+                        >
+                          {unit.status}
+                        </span>
+                        {hasPendingUnitChanges ? (
+                          <small className="org-status-pending">Pendiente de guardar</small>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       {linkedRats} RAT · {linkedActivities} act.
@@ -281,26 +391,27 @@ export function OrganizationStructurePage() {
                       <button
                         type="button"
                         className="button-table-action button-table-action-secondary"
-                        onClick={() => setDetailUnitId(unit.id)}
+                        onClick={() => setActiveUnitId(unit.id)}
                       >
                         Detalle
                       </button>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="button-table-action"
-                        onClick={() =>
-                          queueUnitStatusChange(
-                            unit.id,
-                            persistedUnit.status,
-                            unit.status,
-                            setPendingStatusById,
-                          )
-                        }
-                      >
-                        {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
-                      </button>
+                      {roleCapabilities.organization.updateStatus ? (
+                        <button
+                          type="button"
+                          className={
+                            unit.status === "Activa"
+                              ? "button-table-action button-table-action-danger"
+                              : "button-table-action"
+                          }
+                          onClick={() => handleQueueStatusChange(unit)}
+                        >
+                          {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
+                        </button>
+                      ) : (
+                        <span className="selection-action-empty">Solo lectura</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -310,35 +421,70 @@ export function OrganizationStructurePage() {
         </TableScrollFrame>
       </section>
 
-      {detailUnit ? (
-        <OrgUnitDetailModal
+      {activeUnit ? (
+        <OrgUnitManagementModal
           activityRecords={activityRecords}
-          onClose={() => setDetailUnitId(null)}
+          children={childrenByParent[activeUnit.id] ?? []}
+          onApplyChanges={applyPendingChanges}
+          onClose={() => setActiveUnitId(null)}
+          onResetChanges={resetPendingChanges}
+          pendingChange={activeUnitPendingChange}
           ratRecords={ratRecords}
-          unit={detailUnit}
-          unitsById={unitsById}
-          children={childrenByParent[detailUnit.id] ?? []}
+          roleCanEdit={roleCapabilities.organization.save}
+          unit={activeUnit}
+          unitsById={displayedUnitsById}
         />
       ) : null}
     </section>
   );
 }
 
-function OrgUnitDetailModal({
+function OrgUnitManagementModal({
   activityRecords,
   children,
+  onApplyChanges,
   onClose,
+  onResetChanges,
+  pendingChange,
   ratRecords,
+  roleCanEdit,
   unit,
   unitsById,
 }: {
   activityRecords: ActivityRegistryRecord[];
   children: OrgUnit[];
+  onApplyChanges: (unitId: string, changes: PendingOrgUnitChange) => void;
   onClose: () => void;
+  onResetChanges: (unitId: string) => void;
+  pendingChange?: PendingOrgUnitChange;
   ratRecords: RatRegistryRecord[];
+  roleCanEdit: boolean;
   unit: OrgUnit;
   unitsById: Record<string, OrgUnit>;
 }) {
+  const linkedRats = countLinkedRats(unit, ratRecords);
+  const linkedActivities = countLinkedActivities(unit, activityRecords);
+  const [draftName, setDraftName] = useState(unit.nombre);
+  const [draftSigla, setDraftSigla] = useState(unit.sigla ?? "");
+  const [draftOwnerRole, setDraftOwnerRole] = useState(unit.ownerRole);
+  const hasUnitPendingChanges = Boolean(pendingChange);
+  const isApplyDisabled = draftName.trim().length === 0 || draftOwnerRole.trim().length === 0;
+
+  useEffect(() => {
+    setDraftName(unit.nombre);
+    setDraftSigla(unit.sigla ?? "");
+    setDraftOwnerRole(unit.ownerRole);
+  }, [unit.id, unit.nombre, unit.ownerRole, unit.sigla]);
+
+  function handleApply() {
+    onApplyChanges(unit.id, {
+      nombre: draftName,
+      sigla: draftSigla,
+      ownerRole: draftOwnerRole,
+    });
+    onClose();
+  }
+
   return (
     <div
       className="report-preview-modal"
@@ -349,14 +495,14 @@ function OrgUnitDetailModal({
       <button
         type="button"
         className="report-preview-modal-backdrop"
-        aria-label="Cerrar detalle de unidad"
+        aria-label="Cerrar gestion de dependencia"
         onClick={onClose}
       />
 
       <div className="report-preview-modal-dialog org-detail-modal">
         <header className="report-preview-modal-header">
           <div>
-            <span className="brand-kicker">Tip de apoyo</span>
+            <span className="brand-kicker">Gestion de dependencia</span>
             <div className="page-title-with-icon page-title-with-icon-modal">
               <span className="page-title-icon">
                 <AppIcon name="organization" size={20} strokeWidth={2.1} />
@@ -364,7 +510,8 @@ function OrgUnitDetailModal({
               <h3 id="organization-unit-detail-title">{unit.nombre}</h3>
             </div>
             <p className="page-copy">
-              Revise el detalle funcional antes de activar o deshabilitar esta unidad.
+              Revise impacto y edite los datos maestros. La persistencia final se confirma desde la
+              tabla principal con el guardado global.
             </p>
           </div>
 
@@ -381,16 +528,8 @@ function OrgUnitDetailModal({
               <h4>Identidad organizacional</h4>
               <dl className="detail-grid">
                 <div>
-                  <dt>Unidad</dt>
-                  <dd>{unit.nombre}</dd>
-                </div>
-                <div>
-                  <dt>Estado</dt>
+                  <dt>Estado actual</dt>
                   <dd>{unit.status}</dd>
-                </div>
-                <div>
-                  <dt>Sigla</dt>
-                  <dd>{unit.sigla ?? "Pendiente"}</dd>
                 </div>
                 <div>
                   <dt>Tipo</dt>
@@ -401,10 +540,6 @@ function OrgUnitDetailModal({
                   <dd>{unit.parentId ? unitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz"}</dd>
                 </div>
                 <div>
-                  <dt>Responsable referencial</dt>
-                  <dd>{unit.ownerRole}</dd>
-                </div>
-                <div className="detail-span">
                   <dt>Jerarquia</dt>
                   <dd>{getHierarchyLabel(unit, unitsById)}</dd>
                 </div>
@@ -416,41 +551,103 @@ function OrgUnitDetailModal({
               <dl className="detail-grid">
                 <div>
                   <dt>RAT vinculados</dt>
-                  <dd>{countLinkedRats(unit, ratRecords)}</dd>
+                  <dd>{linkedRats}</dd>
                 </div>
                 <div>
                   <dt>Actividades vinculadas</dt>
-                  <dd>{countLinkedActivities(unit, activityRecords)}</dd>
+                  <dd>{linkedActivities}</dd>
                 </div>
                 <div>
-                  <dt>Subunidades directas</dt>
+                  <dt>Dependencias hijas</dt>
                   <dd>{children.length}</dd>
                 </div>
                 <div>
-                  <dt>Estado recomendado</dt>
-                  <dd>
-                    {countLinkedRats(unit, ratRecords) > 0 ||
-                    countLinkedActivities(unit, activityRecords) > 0
-                      ? "Conservar historico"
-                      : "Cambio sin impacto directo"}
-                  </dd>
+                  <dt>Resultado esperado</dt>
+                  <dd>{hasUnitPendingChanges ? "Cambios pendientes de guardar" : "Sin cambios pendientes"}</dd>
                 </div>
               </dl>
             </div>
 
             {children.length > 0 ? (
               <div className="detail-block">
-                <h4>Subunidades directas</h4>
+                <h4>Dependencias hijas</h4>
                 <div className="org-chip-grid">
                   {children.map((child) => (
                     <article key={child.id} className="org-chip-card org-chip-card-static">
                       <strong>{child.nombre}</strong>
-                      <span>{child.sigla ?? "Sigla pendiente"} · {child.tipo}</span>
+                      <span>
+                        {child.sigla ?? "Sigla pendiente"} · {child.tipo}
+                      </span>
                     </article>
                   ))}
                 </div>
               </div>
             ) : null}
+
+            <div className="detail-block">
+              <h4>Edicion del maestro</h4>
+              <div className="detail-form-grid">
+                <label className="field">
+                  <span>Nombre de la dependencia</span>
+                  <input
+                    className="input"
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    disabled={!roleCanEdit}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Sigla</span>
+                  <input
+                    className="input"
+                    value={draftSigla}
+                    onChange={(event) => setDraftSigla(event.target.value.toUpperCase())}
+                    disabled={!roleCanEdit}
+                    placeholder="Ej. DSGSIF"
+                  />
+                </label>
+
+                <label className="field detail-form-span">
+                  <span>Responsable referencial</span>
+                  <input
+                    className="input"
+                    value={draftOwnerRole}
+                    onChange={(event) => setDraftOwnerRole(event.target.value)}
+                    disabled={!roleCanEdit}
+                  />
+                </label>
+              </div>
+
+              <div className="activity-action-modal-actions">
+                {hasUnitPendingChanges ? (
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-secondary"
+                    onClick={() => {
+                      onResetChanges(unit.id);
+                      onClose();
+                    }}
+                  >
+                    Descartar cambios de esta dependencia
+                  </button>
+                ) : null}
+                {roleCanEdit ? (
+                  <button
+                    type="button"
+                    className="button-table-action"
+                    disabled={isApplyDisabled}
+                    onClick={handleApply}
+                  >
+                    Aplicar cambios
+                  </button>
+                ) : null}
+              </div>
+              <p className="selection-action-empty">
+                La deshabilitacion se realiza desde la tabla principal. Este modal se reserva para
+                revisar impacto y ajustar los datos maestros.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -469,14 +666,6 @@ function isMatch(unit: OrgUnit, normalizedSearch: string) {
   return normalize([unit.nombre, unit.sigla, unit.tipo].filter(Boolean).join(" ")).includes(
     normalizedSearch,
   );
-}
-
-function isStatusVisible(unit: OrgUnit, filter: "Todas" | OrgUnitStatus) {
-  return filter === "Todas" || unit.status === filter;
-}
-
-function isTypeVisible(unit: OrgUnit, filter: "Todos" | OrgUnitType) {
-  return filter === "Todos" || unit.tipo === filter;
 }
 
 function getOrgTypes(units: OrgUnit[]) {
@@ -511,23 +700,60 @@ function countLinkedActivities(unit: OrgUnit, activityRecords: ActivityRegistryR
   ).length;
 }
 
-function queueUnitStatusChange(
-  unitId: string,
-  originalStatus: OrgUnitStatus,
-  currentStatus: OrgUnitStatus,
-  setPendingStatusById: Dispatch<SetStateAction<Record<string, OrgUnitStatus>>>,
-) {
-  const nextStatus = currentStatus === "Activa" ? "Inactiva" : "Activa";
+function mergeUnitWithPendingChange(unit: OrgUnit, change?: PendingOrgUnitChange): OrgUnit {
+  if (!change) {
+    return unit;
+  }
 
-  setPendingStatusById((current) => {
-    const next = { ...current };
+  return {
+    ...unit,
+    ...change,
+    nombre: change.nombre !== undefined ? normalizeText(change.nombre) : unit.nombre,
+    sigla: change.sigla !== undefined ? normalizeOptionalText(change.sigla) : unit.sigla,
+    ownerRole: change.ownerRole !== undefined ? normalizeText(change.ownerRole) : unit.ownerRole,
+    status: change.status ?? unit.status,
+  };
+}
 
-    if (nextStatus === originalStatus) {
-      delete next[unitId];
-      return next;
+function getNormalizedPendingChange(
+  originalUnit: OrgUnit,
+  draft: PendingOrgUnitChange,
+): PendingOrgUnitChange | null {
+  const next: PendingOrgUnitChange = {};
+
+  if (draft.nombre !== undefined) {
+    const normalizedName = normalizeText(draft.nombre);
+    if (normalizedName !== originalUnit.nombre) {
+      next.nombre = normalizedName;
     }
+  }
 
-    next[unitId] = nextStatus;
-    return next;
-  });
+  if (draft.sigla !== undefined) {
+    const normalizedSigla = normalizeOptionalText(draft.sigla);
+    if ((normalizedSigla ?? "") !== (originalUnit.sigla ?? "")) {
+      next.sigla = normalizedSigla;
+    }
+  }
+
+  if (draft.ownerRole !== undefined) {
+    const normalizedOwner = normalizeText(draft.ownerRole);
+    if (normalizedOwner !== originalUnit.ownerRole) {
+      next.ownerRole = normalizedOwner;
+    }
+  }
+
+  if (draft.status !== undefined && draft.status !== originalUnit.status) {
+    next.status = draft.status;
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeOptionalText(value?: string) {
+  const normalized = normalizeText(value ?? "");
+  return normalized.length > 0 ? normalized : undefined;
 }

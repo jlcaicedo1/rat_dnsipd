@@ -1,31 +1,54 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { useAuthStore } from "../auth/auth-store";
+import { getRoleCapabilities } from "../auth/permissions";
 import {
   defaultSignatureFields,
   getActivityTraceability,
-  getActivityRegistryRecords,
-  getDependenciaOptions,
+  getRatRegistryRecords,
   getRiskOptions,
   getRatStatusOptions,
   type ActivityRegistryRecord,
   type SignatureFieldState,
 } from "../rat/rat-registry-data";
+import {
+  buildRegistryWorkspace,
+  persistActivityStatus,
+} from "../rat/registry-workspace";
 import { ReportPreviewModal } from "../rat/ReportPreviewModal";
-import { buildReportPreviewDocument } from "../rat/TreatmentReportPreview";
+import {
+  buildReportPreviewDocument,
+  printReportPreviewDocument,
+} from "../rat/TreatmentReportPreview";
+import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
 
 export function ActivitiesPage() {
-  const activityRecords = getActivityRegistryRecords();
-  const dependenciaOptions = getDependenciaOptions();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const user = useAuthStore((state) => state.user);
+  const roleCapabilities = getRoleCapabilities(user?.role);
+  const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const ratRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), [workspaceVersion]);
+  const activityRecords = useMemo(
+    () => ratRecords.flatMap((rat) => rat.activities),
+    [ratRecords],
+  );
+  const dependenciaOptions = useMemo(
+    () => Array.from(new Set(activityRecords.map((item) => item.dependencia))).sort(),
+    [activityRecords],
+  );
   const riskOptions = getRiskOptions();
   const statusOptions = getRatStatusOptions();
 
-  const [search, setSearch] = useState("");
-  const [dependencia, setDependencia] = useState("Todas");
-  const [estado, setEstado] = useState("Todos");
-  const [riesgo, setRiesgo] = useState("Todos");
-  const [eipd, setEipd] = useState("Todos");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [dependencia, setDependencia] = useState(() => searchParams.get("dependencia") ?? "Todas");
+  const [estado, setEstado] = useState(() => searchParams.get("estado") ?? "Todos");
+  const [riesgo, setRiesgo] = useState(() => searchParams.get("riesgo") ?? "Todos");
+  const [eipd, setEipd] = useState(() => searchParams.get("eipd") ?? "Todos");
+  const [activeActivityId, setActiveActivityId] = useState<number | null>(null);
   const [previewActivityId, setPreviewActivityId] = useState<number | null>(null);
   const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
@@ -53,6 +76,27 @@ export function ActivitiesPage() {
     return matchesSearch && matchesDependencia && matchesEstado && matchesRiesgo && matchesEipd;
   });
 
+  const activeActivity =
+    activityRecords.find((item) => item.id === activeActivityId) ?? null;
+
+  useEffect(() => {
+    setSearch(searchParams.get("q") ?? "");
+    setDependencia(searchParams.get("dependencia") ?? "Todas");
+    setEstado(searchParams.get("estado") ?? "Todos");
+    setRiesgo(searchParams.get("riesgo") ?? "Todos");
+    setEipd(searchParams.get("eipd") ?? "Todos");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeActivityId === null) {
+      return;
+    }
+
+    if (!activityRecords.some((item) => item.id === activeActivityId)) {
+      setActiveActivityId(null);
+    }
+  }, [activityRecords, activeActivityId]);
+
   const previewActivity =
     activityRecords.find((item) => item.id === previewActivityId) ?? null;
   const previewTraceability = previewActivity
@@ -66,7 +110,8 @@ export function ActivitiesPage() {
     ? getActivityTraceability(relationshipActivity.id)
     : null;
 
-  const isAnyModalOpen = previewActivityId !== null || relationshipActivityId !== null;
+  const isAnyModalOpen =
+    previewActivityId !== null || relationshipActivityId !== null || activeActivityId !== null;
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -93,6 +138,7 @@ export function ActivitiesPage() {
       if (event.key === "Escape") {
         setPreviewActivityId(null);
         setRelationshipActivityId(null);
+        setActiveActivityId(null);
       }
     };
 
@@ -100,24 +146,44 @@ export function ActivitiesPage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isAnyModalOpen]);
 
-  const stats = useMemo(
+  const stats = useMemo<ExecutiveKpiItem[]>(
     () => [
-      { label: "Actividades", value: String(activityRecords.length) },
+      {
+        label: "Total actividades",
+        value: activityRecords.length,
+        tone: "neutral",
+      },
+      {
+        label: "Borrador",
+        value: activityRecords.filter((item) => item.estado === "Borrador").length,
+        tone:
+          activityRecords.some((item) => item.estado === "Borrador") ? "neutral" : "success",
+      },
       {
         label: "En revision",
-        value: String(activityRecords.filter((item) => item.estado === "En revision").length),
+        value: activityRecords.filter((item) => item.estado === "En revision").length,
+        tone:
+          activityRecords.some((item) => item.estado === "En revision") ? "warning" : "success",
       },
       {
-        label: "Alto riesgo",
-        value: String(activityRecords.filter((item) => item.riesgo === "Alto").length),
-      },
-      {
-        label: "Con EIPD",
-        value: String(activityRecords.filter((item) => item.requiereEipd).length),
+        label: "Vigentes",
+        value: activityRecords.filter((item) => item.estado === "Vigente").length,
+        tone: "success",
       },
     ],
     [activityRecords],
   );
+
+  function handlePrepareTreatment(activity: ActivityRegistryRecord, mode: "edit" | "duplicate") {
+    seedTreatmentDraftFromActivity(activity, mode);
+    navigate(`/actividades/nuevo?mode=${mode}&source=${activity.id}`);
+  }
+
+  function handleActivityStatusChange(activity: ActivityRegistryRecord) {
+    const nextStatus = getNextActivityStatus(activity.estado, roleCapabilities.activities.approve);
+    persistActivityStatus(activity.id, nextStatus);
+    setWorkspaceVersion((current) => current + 1);
+  }
 
   return (
     <section className="activities-page">
@@ -129,6 +195,12 @@ export function ActivitiesPage() {
             Toda la gestion queda concentrada en una sola matriz: seguimiento,
             lectura documental y mapa relacional de cada tratamiento sin paneles paralelos.
           </p>
+          <p className="permission-hint">
+            Rol actual: <strong>{roleCapabilities.label}</strong>.{" "}
+            {roleCapabilities.activities.update
+              ? "Puede crear, editar y duplicar tratamientos."
+              : "Puede consultar, revisar y formalizar segun el flujo de aprobacion."}
+          </p>
         </div>
 
         <div className="activities-header-actions">
@@ -136,21 +208,16 @@ export function ActivitiesPage() {
             <Link to="/activos" className="button-secondary">
               Ver activos
             </Link>
-            <Link to="/actividades/nuevo" className="button-primary">
-              Nuevo tratamiento
-            </Link>
+            {roleCapabilities.activities.create ? (
+              <Link to="/actividades/nuevo" className="button-primary">
+                Nuevo tratamiento
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>
 
-      <div className="summary-grid">
-        {stats.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      <ExecutiveKpiGrid items={stats} />
 
       <section className="panel activities-matrix-panel">
         <div className="panel-heading panel-heading-compact">
@@ -223,7 +290,7 @@ export function ActivitiesPage() {
         </div>
 
         {filteredActivities.length > 0 ? (
-          <TableScrollFrame className="table-wrapper-matrix" maxHeight="68vh">
+          <TableScrollFrame className="table-wrapper-matrix" maxHeight="none">
             <table className="registry-table registry-table-activities registry-table-activities-central">
               <thead>
                 <tr>
@@ -236,12 +303,27 @@ export function ActivitiesPage() {
                   <th>Riesgo</th>
                   <th>EIPD</th>
                   <th>Version</th>
-                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredActivities.map((activity) => (
-                  <tr key={activity.id}>
+                {filteredActivities.map((activity) => {
+                  const isSelected = activeActivity?.id === activity.id;
+
+                  return (
+                  <tr
+                    key={activity.id}
+                    className={isSelected ? "table-row-selected table-row-interactive" : "table-row-interactive"}
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                    aria-haspopup="dialog"
+                    onClick={() => setActiveActivityId(activity.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setActiveActivityId(activity.id);
+                      }
+                    }}
+                  >
                     <td>
                       <div className="table-primary-copy">
                         <strong>{activity.codigo}</strong>
@@ -269,26 +351,8 @@ export function ActivitiesPage() {
                       <EipdBadge value={activity.requiereEipd} />
                     </td>
                     <td>{activity.version}</td>
-                    <td className="table-actions-cell">
-                      <div className="table-action-group">
-                        <button
-                          type="button"
-                          className="button-table-action"
-                          onClick={() => setPreviewActivityId(activity.id)}
-                        >
-                          Vista previa
-                        </button>
-                        <button
-                          type="button"
-                          className="button-table-action button-table-action-secondary"
-                          onClick={() => setRelationshipActivityId(activity.id)}
-                        >
-                          Mapa
-                        </button>
-                      </div>
-                    </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </TableScrollFrame>
@@ -299,7 +363,8 @@ export function ActivitiesPage() {
 
       {previewActivity ? (
         <ReportPreviewModal
-          heading={`Ficha del tratamiento · ${previewActivity.nombre}`}
+          activity={previewActivity}
+          heading={`Registro de actividad · ${previewActivity.codigo}`}
           isOpen
           onClose={() => setPreviewActivityId(null)}
           onDownload={() => {
@@ -310,7 +375,7 @@ export function ActivitiesPage() {
             }
 
             const documentHtml = buildReportPreviewDocument(
-              `Ficha ${previewActivity.report.codigoRat}`,
+              `Registro ${previewActivity.codigo}`,
               surfaceMarkup,
             );
             const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
@@ -318,16 +383,20 @@ export function ActivitiesPage() {
             const link = document.createElement("a");
 
             link.href = objectUrl;
-            link.download = `${previewActivity.report.codigoRat}-${slugify(previewActivity.nombre)}.html`;
+            link.download = `${previewActivity.codigo}-${slugify(previewActivity.nombre)}.html`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(objectUrl);
           }}
           onPrint={() => {
-            if (typeof window !== "undefined") {
-              window.print();
+            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
+
+            if (!surfaceMarkup) {
+              return;
             }
+
+            printReportPreviewDocument(`Registro ${previewActivity.codigo}`, surfaceMarkup);
           }}
           report={previewActivity.report}
           signatures={previewSignatures}
@@ -343,8 +412,227 @@ export function ActivitiesPage() {
           traceability={relationshipTraceability}
         />
       ) : null}
+
+      {activeActivity ? (
+        <ActivityActionModal
+          activity={activeActivity}
+          canApprove={roleCapabilities.activities.approve}
+          canArchive={roleCapabilities.activities.archive}
+          canDuplicate={roleCapabilities.activities.duplicate}
+          canUpdate={roleCapabilities.activities.update}
+          onArchive={() => {
+            persistActivityStatus(activeActivity.id, "Archivado");
+            setWorkspaceVersion((current) => current + 1);
+          }}
+          onChangeStatus={() => handleActivityStatusChange(activeActivity)}
+          onClose={() => setActiveActivityId(null)}
+          onDuplicate={() => handlePrepareTreatment(activeActivity, "duplicate")}
+          onEdit={() => handlePrepareTreatment(activeActivity, "edit")}
+          onOpenMap={() => {
+            setActiveActivityId(null);
+            setRelationshipActivityId(activeActivity.id);
+          }}
+          onOpenPreview={() => {
+            setActiveActivityId(null);
+            setPreviewActivityId(activeActivity.id);
+          }}
+        />
+      ) : null}
     </section>
   );
+}
+
+function ActivityActionModal({
+  activity,
+  canApprove,
+  canArchive,
+  canDuplicate,
+  canUpdate,
+  onArchive,
+  onChangeStatus,
+  onClose,
+  onDuplicate,
+  onEdit,
+  onOpenMap,
+  onOpenPreview,
+}: {
+  activity: ActivityRegistryRecord;
+  canApprove: boolean;
+  canArchive: boolean;
+  canDuplicate: boolean;
+  canUpdate: boolean;
+  onArchive: () => void;
+  onChangeStatus: () => void;
+  onClose: () => void;
+  onDuplicate: () => void;
+  onEdit: () => void;
+  onOpenMap: () => void;
+  onOpenPreview: () => void;
+}) {
+  return (
+    <div className="report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="activity-action-title">
+      <button
+        type="button"
+        className="report-preview-modal-backdrop"
+        aria-label="Cerrar gestion del tratamiento"
+        onClick={onClose}
+      />
+
+      <div className="report-preview-modal-dialog activity-action-modal">
+        <header className="report-preview-modal-header">
+          <div>
+            <span className="brand-kicker">Gestion del registro</span>
+            <h3 id="activity-action-title">
+              {activity.codigo} · {activity.nombre}
+            </h3>
+            <p className="page-copy">
+              Revise el contexto del tratamiento y ejecute la accion que corresponda sin salir de la vista.
+            </p>
+          </div>
+
+          <div className="report-preview-modal-actions">
+            <button type="button" className="button-secondary" onClick={onClose}>
+              Cerrar
+            </button>
+          </div>
+        </header>
+
+        <div className="report-preview-modal-body">
+          <div className="activity-action-modal-grid">
+            <div className="detail-block">
+              <h4>Contexto del tratamiento</h4>
+              <dl className="detail-grid">
+                <div>
+                  <dt>RAT asociado</dt>
+                  <dd>{activity.ratCodigo}</dd>
+                </div>
+                <div>
+                  <dt>Version</dt>
+                  <dd>{activity.version}</dd>
+                </div>
+                <div>
+                  <dt>Dependencia</dt>
+                  <dd>{activity.dependencia}</dd>
+                </div>
+                <div>
+                  <dt>Unidad ejecutora</dt>
+                  <dd>{activity.unidadEjecutora}</dd>
+                </div>
+                <div>
+                  <dt>Estado</dt>
+                  <dd>
+                    <StatusBadge value={activity.estado} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Riesgo</dt>
+                  <dd>
+                    <RiskBadge value={activity.riesgo} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>EIPD</dt>
+                  <dd>
+                    <EipdBadge value={activity.requiereEipd} />
+                  </dd>
+                </div>
+                <div className="detail-span">
+                  <dt>Finalidad</dt>
+                  <dd>{activity.report.finalidadEspecifica}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="detail-block">
+              <h4>Acciones disponibles</h4>
+              <div className="activity-action-modal-actions">
+                {canUpdate ? (
+                  <button type="button" className="button-table-action" onClick={onEdit}>
+                    Editar
+                  </button>
+                ) : null}
+                {canDuplicate ? (
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-secondary"
+                    onClick={onDuplicate}
+                  >
+                    Duplicar
+                  </button>
+                ) : null}
+                {canUpdate || canApprove ? (
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-secondary"
+                    onClick={onChangeStatus}
+                  >
+                    {getActivityLifecycleLabel(activity.estado, canApprove)}
+                  </button>
+                ) : null}
+                {canArchive && activity.estado !== "Archivado" ? (
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-danger"
+                    onClick={onArchive}
+                  >
+                    Archivar
+                  </button>
+                ) : null}
+                <button type="button" className="button-table-action" onClick={onOpenPreview}>
+                  Vista previa
+                </button>
+                <button
+                  type="button"
+                  className="button-table-action button-table-action-secondary"
+                  onClick={onOpenMap}
+                >
+                  Mapa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getNextActivityStatus(
+  currentStatus: ActivityRegistryRecord["estado"],
+  canApprove: boolean,
+): ActivityRegistryRecord["estado"] {
+  if (currentStatus === "Borrador") {
+    return "En revision";
+  }
+
+  if (currentStatus === "En revision") {
+    return canApprove ? "Vigente" : "Borrador";
+  }
+
+  if (currentStatus === "Archivado") {
+    return "En revision";
+  }
+
+  return "En revision";
+}
+
+function getActivityLifecycleLabel(
+  currentStatus: ActivityRegistryRecord["estado"],
+  canApprove: boolean,
+) {
+  if (currentStatus === "Borrador") {
+    return "Enviar revision";
+  }
+
+  if (currentStatus === "En revision") {
+    return canApprove ? "Publicar" : "Devolver borrador";
+  }
+
+  if (currentStatus === "Archivado") {
+    return "Reactivar";
+  }
+
+  return "Reabrir";
 }
 
 function StatusBadge({ value }: { value: ActivityRegistryRecord["estado"] }) {

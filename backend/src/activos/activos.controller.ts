@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -22,13 +23,21 @@ export class ActivosController {
   constructor(private readonly activosService: ActivosService) {}
 
   @Get('activos')
-  findAll(@Query() query: QueryActivoDto) {
-    return this.activosService.findAll(query);
+  @UseGuards(JwtAuthGuard)
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryActivoDto,
+  ) {
+    return this.activosService.findAll(query, user);
   }
 
   @Get('activos/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.activosService.findOne(id);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.activosService.findOne(id, user);
   }
 
   @Post('activos')
@@ -56,8 +65,21 @@ export class ActivosController {
     return this.activosService.disable(id, user);
   }
 
+  @Delete('activos/:id')
+  @UseGuards(JwtAuthGuard)
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.activosService.disable(id, user);
+  }
+
   @Get('activos/:id/actividad-versiones')
-  findActividadVersiones(@Param('id', ParseIntPipe) id: number) {
-    return this.activosService.findActividadVersiones(id);
+  @UseGuards(JwtAuthGuard)
+  findActividadVersiones(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.activosService.findActividadVersiones(id, user);
   }
 }
