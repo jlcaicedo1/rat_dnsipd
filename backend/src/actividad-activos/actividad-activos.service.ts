@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkActivoDto } from './dto/link-activo.dto';
 
@@ -13,13 +14,17 @@ export class ActividadActivosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
-  async findAll(actividadVersionId: number) {
-    await this.ensureVersion(actividadVersionId);
+  async findAll(actividadVersionId: number, actor: AuthenticatedUser) {
+    await this.ensureVersion(actividadVersionId, actor);
 
     const data = await this.prisma.actividadActivo.findMany({
-      where: { actividadVersionId },
+      where: {
+        actividadVersionId,
+        activo: this.authz.activoWhere(actor),
+      },
       include: {
         activo: true,
       },
@@ -34,9 +39,11 @@ export class ActividadActivosService {
     dto: LinkActivoDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(actividadVersionId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersion(actividadVersionId, actor);
     this.ensureVersionEditable(version.estadoVersion);
-    await this.ensureActivo(dto.activoId);
+    const activo = await this.ensureActivo(dto.activoId, actor);
+    this.assertSameDependencia(version.actividad.rat.dependenciaId, activo.dependenciaId);
 
     const exists = await this.prisma.actividadActivo.findUnique({
       where: {
@@ -87,7 +94,8 @@ export class ActividadActivosService {
     activoId: number,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(actividadVersionId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersion(actividadVersionId, actor);
     this.ensureVersionEditable(version.estadoVersion);
 
     const relation = await this.prisma.actividadActivo.findUnique({
@@ -106,6 +114,10 @@ export class ActividadActivosService {
       throw new NotFoundException(
         'La asociacion entre version de actividad y activo no existe',
       );
+    }
+
+    if (actor) {
+      this.authz.assertCanUseDependencia(actor, relation.activo.dependenciaId);
     }
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -141,9 +153,23 @@ export class ActividadActivosService {
     };
   }
 
-  private async ensureVersion(id: number) {
-    const version = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  private async ensureVersion(id: number, actor?: AuthenticatedUser) {
+    const version = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        ...(actor
+          ? {
+              actividad: this.authz.actividadWhere(actor),
+            }
+          : {}),
+      },
+      include: {
+        actividad: {
+          include: {
+            rat: true,
+          },
+        },
+      },
     });
 
     if (!version) {
@@ -153,9 +179,12 @@ export class ActividadActivosService {
     return version;
   }
 
-  private async ensureActivo(id: number) {
-    const activo = await this.prisma.activoInformacion.findUnique({
-      where: { id },
+  private async ensureActivo(id: number, actor?: AuthenticatedUser) {
+    const activo = await this.prisma.activoInformacion.findFirst({
+      where: {
+        id,
+        ...(actor ? { AND: [this.authz.activoWhere(actor)] } : {}),
+      },
     });
 
     if (!activo) {
@@ -169,6 +198,17 @@ export class ActividadActivosService {
     if (!['BORRADOR', 'OBSERVADA', 'SUBSANADA'].includes(estadoVersion)) {
       throw new ConflictException(
         `No se pueden editar activos desde el estado ${estadoVersion}`,
+      );
+    }
+  }
+
+  private assertSameDependencia(
+    actividadDependenciaId: number,
+    activoDependenciaId: number | null,
+  ) {
+    if (!activoDependenciaId || activoDependenciaId !== actividadDependenciaId) {
+      throw new ConflictException(
+        'El activo debe pertenecer a la misma dependencia de la actividad de tratamiento.',
       );
     }
   }

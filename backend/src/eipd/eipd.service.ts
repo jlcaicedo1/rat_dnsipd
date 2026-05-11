@@ -1,20 +1,35 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureActividadVersionEditable } from '../actividad-versiones/actividad-version.utils';
 import { CreateEipdDto } from './dto/create-eipd.dto';
 import { UpdateEipdDto } from './dto/update-eipd.dto';
+
+const EIPD_APPROVAL_STATES = new Set([
+  'APROBADA',
+  'APROBADO',
+  'DICTAMEN_APROBADO',
+  'CONSULTA_PREVIA_APROBADA',
+  'RECHAZADA',
+  'DEVUELTA',
+  'OBSERVADA',
+]);
 
 @Injectable()
 export class EipdService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
-  async findByActividadVersion(actividadVersionId: number) {
-    await this.ensureVersion(actividadVersionId);
+  async findByActividadVersion(
+    actividadVersionId: number,
+    actor: AuthenticatedUser,
+  ) {
+    await this.ensureVersion(actividadVersionId, actor);
 
     const data = await this.prisma.eipd.findUnique({
       where: { actividadVersionId },
@@ -28,7 +43,8 @@ export class EipdService {
     dto: CreateEipdDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(actividadVersionId);
+    this.assertEipdTransitionRole(dto.estado, actor);
+    const version = await this.ensureVersion(actividadVersionId, actor);
     ensureActividadVersionEditable(version.estadoVersion);
 
     const existing = await this.prisma.eipd.findUnique({
@@ -80,9 +96,14 @@ export class EipdService {
     return { data };
   }
 
-  async findOne(id: number) {
-    const data = await this.prisma.eipd.findUnique({
-      where: { id },
+  async findOne(id: number, actor: AuthenticatedUser) {
+    const data = await this.prisma.eipd.findFirst({
+      where: {
+        id,
+        actividadVersion: {
+          actividad: this.authz.actividadWhere(actor),
+        },
+      },
       include: {
         actividadVersion: {
           include: {
@@ -100,7 +121,8 @@ export class EipdService {
   }
 
   async update(id: number, dto: UpdateEipdDto, actor?: AuthenticatedUser) {
-    const current = await this.findOne(id);
+    this.assertEipdTransitionRole(dto.estado, actor);
+    const current = await this.findOne(id, actor as AuthenticatedUser);
     ensureActividadVersionEditable(current.data.actividadVersion.estadoVersion);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -148,7 +170,8 @@ export class EipdService {
   }
 
   async remove(id: number, actor?: AuthenticatedUser) {
-    const current = await this.findOne(id);
+    this.authz.assertCanUpdateAssessments(actor);
+    const current = await this.findOne(id, actor as AuthenticatedUser);
     ensureActividadVersionEditable(current.data.actividadVersion.estadoVersion);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -192,9 +215,16 @@ export class EipdService {
     return { data };
   }
 
-  private async ensureVersion(id: number) {
-    const version = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  private async ensureVersion(id: number, actor?: AuthenticatedUser) {
+    const version = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        ...(actor
+          ? {
+              actividad: this.authz.actividadWhere(actor),
+            }
+          : {}),
+      },
     });
 
     if (!version) {
@@ -202,5 +232,19 @@ export class EipdService {
     }
 
     return version;
+  }
+
+  private assertEipdTransitionRole(
+    estado: string | undefined,
+    actor: AuthenticatedUser | undefined,
+  ) {
+    const normalized = estado?.trim().toUpperCase();
+
+    if (normalized && EIPD_APPROVAL_STATES.has(normalized)) {
+      this.authz.assertCanApproveTreatment(actor);
+      return;
+    }
+
+    this.authz.assertCanUpdateAssessments(actor);
   }
 }

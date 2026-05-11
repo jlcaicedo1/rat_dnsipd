@@ -21,10 +21,12 @@ export class ActividadActivosController {
   ) {}
 
   @Get('actividad-versiones/:actividadVersionId/activos')
+  @UseGuards(JwtAuthGuard)
   findAll(
     @Param('actividadVersionId', ParseIntPipe) actividadVersionId: number,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.actividadActivosService.findAll(actividadVersionId);
+    return this.actividadActivosService.findAll(actividadVersionId, user);
   }
 
   @Post('actividad-versiones/:actividadVersionId/activos')

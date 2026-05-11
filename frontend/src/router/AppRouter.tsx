@@ -1,34 +1,32 @@
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useAuthStore } from "../features/auth/auth-store";
+import { canAccessModule, type AppModuleKey } from "../features/auth/permissions";
 import { MainLayout } from "../layouts/MainLayout";
 import { LoginPage } from "../features/auth/LoginPage";
 import { RequireAuth } from "../features/auth/RequireAuth";
 import { AuditLogPage } from "../features/audit/AuditLogPage";
 import { ActivitiesPage } from "../features/activities-page/ActivitiesPage";
+import { AssetsPage } from "../features/assets/AssetsPage";
+import { AssetCatalogsPage } from "../features/catalogs/AssetCatalogsPage";
+import { CatalogsPage } from "../features/catalogs/CatalogsPage";
+import type { ExecutiveKpiItem } from "../components/ExecutiveKpiGrid";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
-import { RatListPage } from "../features/rat/RatListPage";
+import { EipdPage } from "../features/eipd/EipdPage";
 import { RatCreatePage } from "../features/rat/RatCreatePage";
 import { ModulePage } from "../features/modules/ModulePage";
 import { OrganizationStructurePage } from "../features/organization/OrganizationStructurePage";
+import { UserAdminPage } from "../features/users/UserAdminPage";
 
-const modulePages = [
-  {
-    path: "activos",
-    eyebrow: "Inventario",
-    title: "Activos de informacion",
-    description:
-      "Registro de aplicaciones, bases de datos, repositorios documentales, responsables, clasificacion y ciclo de vida.",
-    status: "MVP planificado",
-    scope: [
-      "Mapa de activos asociados a actividades de tratamiento.",
-      "Clasificacion de informacion y criticidad institucional.",
-      "Dependencia responsable, custodio y relacion con riesgos.",
-    ],
-    metrics: [
-      { label: "Activos", value: "0" },
-      { label: "Criticos", value: "0" },
-      { label: "Sin responsable", value: "0" },
-    ],
-  },
+const modulePages: Array<{
+  path: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  status: string;
+  scope: string[];
+  metrics: ExecutiveKpiItem[];
+}> = [
   {
     path: "mtge",
     eyebrow: "MTGE",
@@ -41,11 +39,7 @@ const modulePages = [
       "Resultado consolidado por dominio de control.",
       "Evidencias y observaciones para auditoria.",
     ],
-    metrics: [
-      { label: "Evaluaciones", value: "0" },
-      { label: "En proceso", value: "0" },
-      { label: "Cerradas", value: "0" },
-    ],
+    metrics: [],
   },
   {
     path: "riesgos",
@@ -59,29 +53,7 @@ const modulePages = [
       "Tratamientos, responsables y fechas de seguimiento.",
       "Semaforizacion para priorizar riesgos altos y criticos.",
     ],
-    metrics: [
-      { label: "Riesgos", value: "0" },
-      { label: "Altos", value: "0" },
-      { label: "Tratamiento", value: "0" },
-    ],
-  },
-  {
-    path: "eipd",
-    eyebrow: "Privacidad",
-    title: "EIPD",
-    description:
-      "Evaluacion de impacto de proteccion de datos para tratamientos de alto riesgo o datos sensibles.",
-    status: "MVP planificado",
-    scope: [
-      "Criterios de necesidad, proporcionalidad y legitimidad.",
-      "Riesgos para titulares y medidas de mitigacion.",
-      "Dictamen, aprobacion y versionamiento documental.",
-    ],
-    metrics: [
-      { label: "EIPD", value: "0" },
-      { label: "Pendientes", value: "0" },
-      { label: "Aprobadas", value: "0" },
-    ],
+    metrics: [],
   },
   {
     path: "reportes",
@@ -95,29 +67,7 @@ const modulePages = [
       "Mapa de riesgos y actividades con EIPD requerida.",
       "Exportables para auditoria y comites de seguimiento.",
     ],
-    metrics: [
-      { label: "Reportes", value: "0" },
-      { label: "Programados", value: "0" },
-      { label: "Exportados", value: "0" },
-    ],
-  },
-  {
-    path: "catalogos",
-    eyebrow: "Parametros",
-    title: "Catalogos",
-    description:
-      "Administracion de bases de licitud, tipos de activo, clasificacion, titulares, categorias y listas de control.",
-    status: "Base cargada",
-    scope: [
-      "Catalogos normalizados por tipo y codigo unico.",
-      "Estados activo/inactivo para preservar historico.",
-      "Uso transversal en RAT, actividades, activos y evaluaciones.",
-    ],
-    metrics: [
-      { label: "Tipos", value: "3" },
-      { label: "Items", value: "3" },
-      { label: "Activos", value: "3" },
-    ],
+    metrics: [],
   },
 ];
 
@@ -128,25 +78,68 @@ export function AppRouter() {
       <Route path="/" element={<RequireAuth />}>
         <Route element={<MainLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="rats" element={<RatListPage />} />
+          <Route path="dashboard" element={<ModuleAccessGate module="dashboard"><DashboardPage /></ModuleAccessGate>} />
+          <Route path="actividades" element={<ModuleAccessGate module="activities"><ActivitiesPage /></ModuleAccessGate>} />
+          <Route path="actividades/nuevo" element={<RatCreatePage />} />
+          <Route path="activos" element={<ModuleAccessGate module="assets"><AssetsPage /></ModuleAccessGate>} />
+          <Route path="eipd" element={<ModuleAccessGate module="eipd"><EipdPage /></ModuleAccessGate>} />
+          <Route path="rats" element={<ModuleAccessGate module="activities"><ActivitiesPage /></ModuleAccessGate>} />
           <Route path="rats/new" element={<RatCreatePage />} />
-          <Route path="actividades" element={<ActivitiesPage />} />
-          <Route path="estructura-organica" element={<OrganizationStructurePage />} />
-          <Route path="audit" element={<AuditLogPage />} />
+          <Route
+            path="estructura-organica"
+            element={
+              <ModuleAccessGate module="organization">
+                <OrganizationStructurePage />
+              </ModuleAccessGate>
+            }
+          />
+          <Route
+            path="usuarios"
+            element={
+              <ModuleAccessGate module="users">
+                <UserAdminPage />
+              </ModuleAccessGate>
+            }
+          />
+          <Route
+            path="audit"
+            element={
+              <ModuleAccessGate module="audit">
+                <AuditLogPage />
+              </ModuleAccessGate>
+            }
+          />
+          <Route
+            path="catalogos"
+            element={
+              <ModuleAccessGate module="catalogs">
+                <CatalogsPage />
+              </ModuleAccessGate>
+            }
+          />
+          <Route
+            path="catalogos/activos"
+            element={
+              <ModuleAccessGate module="catalogs">
+                <AssetCatalogsPage />
+              </ModuleAccessGate>
+            }
+          />
           {modulePages.map((page) => (
             <Route
               key={page.path}
               path={page.path}
               element={
-                <ModulePage
-                  eyebrow={page.eyebrow}
-                  title={page.title}
-                  description={page.description}
-                  status={page.status}
-                  scope={page.scope}
-                  metrics={page.metrics}
-                />
+                <ModuleAccessGate module={page.path as AppModuleKey}>
+                  <ModulePage
+                    eyebrow={page.eyebrow}
+                    title={page.title}
+                    description={page.description}
+                    status={page.status}
+                    scope={page.scope}
+                    metrics={page.metrics}
+                  />
+                </ModuleAccessGate>
               }
             />
           ))}
@@ -155,4 +148,20 @@ export function AppRouter() {
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
+}
+
+function ModuleAccessGate({
+  children,
+  module,
+}: {
+  children: ReactNode;
+  module: AppModuleKey;
+}) {
+  const user = useAuthStore((state) => state.user);
+
+  if (!canAccessModule(user?.role, module)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 }

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateActividadVersionDto } from './dto/create-actividad-version.dto';
 import { TransitionCommentDto } from './dto/transition-comment.dto';
@@ -16,6 +17,7 @@ export class ActividadVersionesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
   async create(
@@ -23,7 +25,8 @@ export class ActividadVersionesService {
     dto: CreateActividadVersionDto,
     actor?: AuthenticatedUser,
   ) {
-    const actividad = await this.ensureActividad(actividadId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const actividad = await this.ensureActividad(actividadId, actor);
 
     const lastVersion = await this.prisma.actividadVersion.findFirst({
       where: { actividadId },
@@ -75,9 +78,12 @@ export class ActividadVersionesService {
     };
   }
 
-  async findOne(id: number) {
-    const data = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  async findOne(id: number, actor: AuthenticatedUser) {
+    const data = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        actividad: this.authz.actividadWhere(actor),
+      },
       include: {
         actividad: true,
         baseLicitud: true,
@@ -91,9 +97,12 @@ export class ActividadVersionesService {
     return { data };
   }
 
-  async findFull(id: number) {
-    const data = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  async findFull(id: number, actor: AuthenticatedUser) {
+    const data = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        actividad: this.authz.actividadWhere(actor),
+      },
       include: {
         actividad: {
           include: {
@@ -127,8 +136,8 @@ export class ActividadVersionesService {
     return { data };
   }
 
-  async findObservaciones(id: number) {
-    await this.ensureVersion(id);
+  async findObservaciones(id: number, actor: AuthenticatedUser) {
+    await this.ensureVersion(id, actor);
 
     const data = await this.prisma.revisionObservacion.findMany({
       where: { actividadVersionId: id },
@@ -143,7 +152,8 @@ export class ActividadVersionesService {
     dto: UpdateActividadVersionDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
 
     if (version.estadoVersion === 'VIGENTE') {
       throw new ConflictException('No se puede editar una version vigente');
@@ -214,7 +224,8 @@ export class ActividadVersionesService {
   }
 
   async submitReview(id: number, actor?: AuthenticatedUser) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, ['BORRADOR', 'SUBSANADA']);
     this.ensureReviewCompleteness(version);
 
@@ -259,7 +270,8 @@ export class ActividadVersionesService {
     dto: TransitionCommentDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanApproveTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, ['EN_REVISION']);
     const comentario = this.normalizeComment(dto.comentario);
 
@@ -269,7 +281,7 @@ export class ActividadVersionesService {
           actividadVersionId: id,
           comentario,
           campo: dto.campo?.trim() || null,
-          autor: dto.autor?.trim() || 'revisor',
+          autor: actor?.username || dto.autor?.trim() || 'revisor',
           atendida: false,
         },
       });
@@ -311,7 +323,8 @@ export class ActividadVersionesService {
     dto: TransitionCommentDto,
     actor?: AuthenticatedUser,
   ) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanAuthorTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, ['OBSERVADA']);
     const comentario = this.normalizeComment(dto.comentario);
 
@@ -337,7 +350,7 @@ export class ActividadVersionesService {
           atendida: true,
           comentarioSubsanacion: comentario,
           fechaSubsanacion: new Date(),
-          subsanadoPor: dto.autor?.trim() || 'editor',
+          subsanadoPor: actor?.username || dto.autor?.trim() || 'editor',
         },
       });
 
@@ -375,7 +388,8 @@ export class ActividadVersionesService {
   }
 
   async approve(id: number, actor?: AuthenticatedUser) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanApproveTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, ['EN_REVISION']);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -405,7 +419,8 @@ export class ActividadVersionesService {
   }
 
   async setCurrent(id: number, actor?: AuthenticatedUser) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanApproveTreatment(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, ['APROBADA']);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -455,7 +470,8 @@ export class ActividadVersionesService {
   }
 
   async archive(id: number, actor?: AuthenticatedUser) {
-    const version = await this.ensureVersion(id);
+    this.authz.assertCanAdministerWorkflow(actor);
+    const version = await this.ensureVersion(id, actor);
     this.ensureEditableWorkflow(version.estadoVersion, [
       'BORRADOR',
       'OBSERVADA',
@@ -491,9 +507,12 @@ export class ActividadVersionesService {
     return { data };
   }
 
-  private async ensureActividad(id: number) {
-    const actividad = await this.prisma.actividadTratamiento.findUnique({
-      where: { id },
+  private async ensureActividad(id: number, actor?: AuthenticatedUser) {
+    const actividad = await this.prisma.actividadTratamiento.findFirst({
+      where: {
+        id,
+        ...(actor ? { AND: [this.authz.actividadWhere(actor)] } : {}),
+      },
     });
 
     if (!actividad) {
@@ -503,9 +522,16 @@ export class ActividadVersionesService {
     return actividad;
   }
 
-  private async ensureVersion(id: number) {
-    const version = await this.prisma.actividadVersion.findUnique({
-      where: { id },
+  private async ensureVersion(id: number, actor?: AuthenticatedUser) {
+    const version = await this.prisma.actividadVersion.findFirst({
+      where: {
+        id,
+        ...(actor
+          ? {
+              actividad: this.authz.actividadWhere(actor),
+            }
+          : {}),
+      },
     });
 
     if (!version) {

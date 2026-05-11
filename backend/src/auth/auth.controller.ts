@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import type { AuthenticatedUser } from "./authenticated-user.interface";
 import { LoginDto } from "./dto/login.dto";
 import { AuthService } from "./auth.service";
+import { CurrentUser } from "./current-user.decorator";
+import { JwtAuthGuard } from "./jwt-auth.guard";
 
 @Controller("auth")
 export class AuthController {
@@ -12,10 +15,8 @@ export class AuthController {
   }
 
   @Get("me")
-  me() {
-    return {
-      data: null,
-      message: "Pendiente de integrar guard JWT y contexto de usuario",
-    };
+  @UseGuards(JwtAuthGuard)
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return { data: user };
   }
 }

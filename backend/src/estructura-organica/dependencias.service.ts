@@ -4,6 +4,9 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
+import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDependenciaDto } from './dto/create-dependencia.dto';
 import { UpdateDependenciaDto } from './dto/update-dependencia.dto';
@@ -16,10 +19,17 @@ type FindDependenciasInput = {
 
 @Injectable()
 export class DependenciasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
+  ) {}
 
-  async findAll(filters: FindDependenciasInput) {
+  async findAll(filters: FindDependenciasInput, actor: AuthenticatedUser) {
     const where: Prisma.OrgDependenciaWhereInput = {
+      ...(!this.authz.isGlobal(actor)
+        ? { id: this.getActorDependenciaId(actor) }
+        : {}),
       ...(filters.tipoProcesoId ? { tipoProcesoId: filters.tipoProcesoId } : {}),
       ...(filters.activo !== undefined ? { activo: filters.activo } : {}),
       ...(filters.search
@@ -50,7 +60,8 @@ export class DependenciasService {
     return { data };
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, actor: AuthenticatedUser) {
+    this.authz.assertCanUseDependencia(actor, id);
     const data = await this.prisma.orgDependencia.findUnique({
       where: { id },
       include: {
@@ -68,7 +79,8 @@ export class DependenciasService {
     return { data };
   }
 
-  async create(dto: CreateDependenciaDto) {
+  async create(dto: CreateDependenciaDto, actor?: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
     await this.ensureTipoProceso(dto.tipoProcesoId);
 
     const createData: Prisma.OrgDependenciaUncheckedCreateInput = {
@@ -80,18 +92,34 @@ export class DependenciasService {
       activo: dto.activo ?? true,
     };
 
-    const data = await this.prisma.orgDependencia.create({
-      data: createData,
-      include: {
-        tipoProceso: true,
-      },
+    const data = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.orgDependencia.create({
+        data: createData,
+        include: {
+          tipoProceso: true,
+        },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgDependencia',
+        entidadId: created.id,
+        accion: 'CREATE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Creacion de dependencia',
+        afterData: created,
+      });
+
+      return created;
     });
 
     return { data };
   }
 
-  async update(id: number, dto: UpdateDependenciaDto) {
-    await this.ensureExists(id);
+  async update(id: number, dto: UpdateDependenciaDto, actor?: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
+    const current = await this.ensureExists(id);
 
     if (dto.tipoProcesoId !== undefined) {
       await this.ensureTipoProceso(dto.tipoProcesoId);
@@ -112,18 +140,35 @@ export class DependenciasService {
       ...(dto.activo !== undefined ? { activo: dto.activo } : {}),
     };
 
-    const data = await this.prisma.orgDependencia.update({
-      where: { id },
-      data: updateData,
-      include: {
-        tipoProceso: true,
-      },
+    const data = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.orgDependencia.update({
+        where: { id },
+        data: updateData,
+        include: {
+          tipoProceso: true,
+        },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgDependencia',
+        entidadId: id,
+        accion: 'UPDATE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Actualizacion de dependencia',
+        beforeData: current,
+        afterData: updated,
+      });
+
+      return updated;
     });
 
     return { data };
   }
 
-  async findSubdirecciones(id: number) {
+  async findSubdirecciones(id: number, actor: AuthenticatedUser) {
+    this.authz.assertCanUseDependencia(actor, id);
     await this.ensureExists(id);
 
     const data = await this.prisma.orgSubdireccion.findMany({
@@ -134,7 +179,8 @@ export class DependenciasService {
     return { data };
   }
 
-  async findRats(id: number) {
+  async findRats(id: number, actor: AuthenticatedUser) {
+    this.authz.assertCanUseDependencia(actor, id);
     await this.ensureExists(id);
 
     const data = await this.prisma.rat.findMany({
@@ -170,5 +216,15 @@ export class DependenciasService {
     }
 
     return entity;
+  }
+
+  private getActorDependenciaId(actor: AuthenticatedUser) {
+    if (!actor.dependenciaId) {
+      throw new UnprocessableEntityException(
+        'El usuario no tiene dependencia asignada para consultar estructura organica.',
+      );
+    }
+
+    return actor.dependenciaId;
   }
 }

@@ -19,8 +19,12 @@ export class MtgeController {
   constructor(private readonly mtgeService: MtgeService) {}
 
   @Get('actividad-versiones/:actividadVersionId/mtge')
-  findOne(@Param('actividadVersionId', ParseIntPipe) actividadVersionId: number) {
-    return this.mtgeService.findOne(actividadVersionId);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('actividadVersionId', ParseIntPipe) actividadVersionId: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.mtgeService.findOne(actividadVersionId, user);
   }
 
   @Post('actividad-versiones/:actividadVersionId/mtge/calculate')

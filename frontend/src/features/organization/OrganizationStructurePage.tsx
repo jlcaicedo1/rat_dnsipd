@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AppIcon } from "../../components/AppIcon";
+import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
+import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { useAuthStore } from "../auth/auth-store";
+import { getRoleCapabilities } from "../auth/permissions";
 import {
   getActivityRegistryRecords,
   getRatRegistryRecords,
@@ -7,20 +13,42 @@ import {
 } from "../rat/rat-registry-data";
 import {
   getOrganizationUnits,
+  saveOrganizationUnits,
   type OrgUnit,
   type OrgUnitStatus,
   type OrgUnitType,
 } from "./organization-structure-data";
 
-type ViewMode = "arbol" | "administracion" | "impacto";
+type PendingOrgUnitChange = Partial<Pick<OrgUnit, "nombre" | "sigla" | "ownerRole" | "status">>;
 
 export function OrganizationStructurePage() {
+  const [searchParams] = useSearchParams();
+  const user = useAuthStore((state) => state.user);
+  const roleCapabilities = getRoleCapabilities(user?.role);
   const [units, setUnits] = useState(() => getOrganizationUnits());
-  const [selectedUnitId, setSelectedUnitId] = useState("dsgsif");
-  const [viewMode, setViewMode] = useState<ViewMode>("arbol");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"Todas" | OrgUnitStatus>("Todas");
-  const [typeFilter, setTypeFilter] = useState<"Todos" | OrgUnitType>("Todos");
+  const [pendingChangesById, setPendingChangesById] = useState<
+    Record<string, PendingOrgUnitChange>
+  >({});
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState<"Todas" | OrgUnitStatus>(
+    () => (searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas",
+  );
+  const [typeFilter, setTypeFilter] = useState<"Todos" | OrgUnitType>(
+    () => (searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos",
+  );
+  const [usageFilter, setUsageFilter] = useState<"Todos" | "Con RAT" | "Sin uso">(
+    () => {
+      const usage = searchParams.get("uso");
+      if (usage === "con-rat") {
+        return "Con RAT";
+      }
+      if (usage === "sin-uso") {
+        return "Sin uso";
+      }
+      return "Todos";
+    },
+  );
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
 
   const ratRecords = getRatRegistryRecords();
   const activityRecords = getActivityRegistryRecords();
@@ -30,10 +58,20 @@ export function OrganizationStructurePage() {
     [units],
   );
 
+  const displayedUnits = useMemo(
+    () => units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id])),
+    [pendingChangesById, units],
+  );
+
+  const displayedUnitsById = useMemo(
+    () => Object.fromEntries(displayedUnits.map((unit) => [unit.id, unit])),
+    [displayedUnits],
+  );
+
   const childrenByParent = useMemo(() => {
     const map: Record<string, OrgUnit[]> = {};
 
-    for (const unit of units) {
+    for (const unit of displayedUnits) {
       const parentId = unit.parentId ?? "__root__";
       map[parentId] ??= [];
       map[parentId].push(unit);
@@ -44,198 +82,200 @@ export function OrganizationStructurePage() {
     }
 
     return map;
-  }, [units]);
-
-  const selectedUnit = unitsById[selectedUnitId] ?? units[0] ?? null;
-
-  useEffect(() => {
-    if (!selectedUnit && units[0]) {
-      setSelectedUnitId(units[0].id);
-    }
-  }, [selectedUnit, units]);
-
-  const visibleTreeRows = useMemo(() => {
-    const result: Array<{ unit: OrgUnit; level: number }> = [];
-    const normalizedSearch = normalize(search);
-
-    function hasVisibleDescendant(unitId: string): boolean {
-      const children = childrenByParent[unitId] ?? [];
-
-      return children.some((child) => isMatch(child, normalizedSearch) || hasVisibleDescendant(child.id));
-    }
-
-    function visit(unitId: string, level: number) {
-      const unit = unitsById[unitId];
-      if (!unit) {
-        return;
-      }
-
-      const matchesFilters =
-        isStatusVisible(unit, statusFilter) &&
-        isTypeVisible(unit, typeFilter) &&
-        (normalizedSearch.length === 0 || isMatch(unit, normalizedSearch) || hasVisibleDescendant(unit.id));
-
-      if (!matchesFilters) {
-        return;
-      }
-
-      result.push({ unit, level });
-
-      for (const child of childrenByParent[unit.id] ?? []) {
-        visit(child.id, level + 1);
-      }
-    }
-
-    visit("iess", 0);
-
-    return result;
-  }, [childrenByParent, search, statusFilter, typeFilter, unitsById]);
+  }, [displayedUnits]);
 
   const maintenanceUnits = useMemo(() => {
     const normalizedSearch = normalize(search);
 
-    return units.filter((unit) => {
+    return displayedUnits.filter((unit) => {
       const matchesSearch = normalizedSearch.length === 0 || isMatch(unit, normalizedSearch);
-      const matchesStatus = isStatusVisible(unit, statusFilter);
-      const matchesType = isTypeVisible(unit, typeFilter);
+      const matchesStatus = statusFilter === "Todas" || unit.status === statusFilter;
+      const matchesType = typeFilter === "Todos" || unit.tipo === typeFilter;
+      const linkedRats = countLinkedRats(unit, ratRecords);
+      const linkedActivities = countLinkedActivities(unit, activityRecords);
+      const matchesUsage =
+        usageFilter === "Todos" ||
+        (usageFilter === "Con RAT" ? linkedRats > 0 : linkedRats === 0 && linkedActivities === 0);
 
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesStatus && matchesType && matchesUsage;
     });
-  }, [search, statusFilter, typeFilter, units]);
+  }, [activityRecords, displayedUnits, ratRecords, search, statusFilter, typeFilter, usageFilter]);
 
-  const selectedSubtree = useMemo(() => {
-    if (!selectedUnit) {
-      return [];
+  const hasPendingChanges = Object.keys(pendingChangesById).length > 0;
+  const activeUnit = activeUnitId ? displayedUnitsById[activeUnitId] ?? null : null;
+  const activeUnitPendingChange = activeUnitId ? pendingChangesById[activeUnitId] : undefined;
+  if (!roleCapabilities.organization.view) {
+    return (
+      <section className="panel access-panel">
+        <span className="brand-kicker">Acceso restringido</span>
+        <h2>Administracion de dependencias</h2>
+        <p className="page-copy">
+          Esta vista queda reservada para perfiles administradores porque afecta maestros,
+          permisos, filtros y disponibilidad de nuevas dependencias dentro del sistema.
+        </p>
+      </section>
+    );
+  }
+
+  useEffect(() => {
+    setSearch(searchParams.get("q") ?? "");
+    setStatusFilter((searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas");
+    setTypeFilter((searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos");
+    const usage = searchParams.get("uso");
+    setUsageFilter(usage === "con-rat" ? "Con RAT" : usage === "sin-uso" ? "Sin uso" : "Todos");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
     }
 
-    const collected: OrgUnit[] = [];
+    const previousOverflow = document.body.style.overflow;
 
-    function visit(unitId: string) {
-      const unit = unitsById[unitId];
-      if (!unit) {
-        return;
-      }
-
-      collected.push(unit);
-
-      for (const child of childrenByParent[unitId] ?? []) {
-        visit(child.id);
-      }
+    if (activeUnit) {
+      document.body.style.overflow = "hidden";
     }
 
-    visit(selectedUnit.id);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activeUnit]);
 
-    return collected;
-  }, [childrenByParent, selectedUnit, unitsById]);
-
-  const selectedNames = useMemo(() => {
-    const values = new Set<string>();
-
-    for (const unit of selectedSubtree) {
-      values.add(unit.nombre);
-      if (unit.sigla) {
-        values.add(unit.sigla);
-      }
+  useEffect(() => {
+    if (!activeUnit || typeof window === "undefined") {
+      return;
     }
 
-    return values;
-  }, [selectedSubtree]);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveUnitId(null);
+      }
+    };
 
-  const relatedRats = useMemo(
-    () =>
-      ratRecords.filter(
-        (rat) => selectedNames.has(rat.dependencia) || selectedNames.has(rat.unidadResponsable),
-      ),
-    [ratRecords, selectedNames],
-  );
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeUnit]);
 
-  const relatedActivities = useMemo(
-    () =>
-      activityRecords.filter((activity) => {
-        const baseMatch =
-          selectedNames.has(activity.dependencia) ||
-          selectedNames.has(activity.unidadEjecutora) ||
-          selectedNames.has(activity.ratCodigo);
-
-        if (baseMatch) {
-          return true;
-        }
-
-        return activity.responsables.some((item) => selectedNames.has(item));
-      }),
-    [activityRecords, selectedNames],
-  );
-
-  const stats = [
-    { label: "Unidades totales", value: String(units.length) },
+  const stats: ExecutiveKpiItem[] = [
+    {
+      label: "Total dependencias",
+      value: displayedUnits.length,
+      tone: "neutral",
+    },
     {
       label: "Activas",
-      value: String(units.filter((unit) => unit.status === "Activa").length),
+      value: displayedUnits.filter((unit) => unit.status === "Activa").length,
+      tone: "success",
     },
     {
-      label: "Siglas definidas",
-      value: String(units.filter((unit) => Boolean(unit.sigla)).length),
+      label: "Inactivas",
+      value: displayedUnits.filter((unit) => unit.status === "Inactiva").length,
+      tone:
+        displayedUnits.some((unit) => unit.status === "Inactiva") ? "warning" : "neutral",
     },
-    { label: "RAT vinculados", value: String(relatedRats.length) },
+    {
+      label: "Sin uso",
+      value: displayedUnits.filter(
+        (unit) =>
+          countLinkedRats(unit, ratRecords) === 0 &&
+          countLinkedActivities(unit, activityRecords) === 0,
+      ).length,
+      tone: "neutral",
+    },
   ];
 
-  const selectedChildren = selectedUnit ? childrenByParent[selectedUnit.id] ?? [] : [];
-  const relatedActivitiesByStatus = summarizeActivitiesByStatus(relatedActivities);
-  const relatedActivitiesByRisk = summarizeActivitiesByRisk(relatedActivities);
-  const selectedSiglaPending = selectedSubtree.filter((unit) => !unit.sigla).length;
+  function handleSaveAllChanges() {
+    const nextUnits = units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id]));
+
+    setUnits(nextUnits);
+    saveOrganizationUnits(nextUnits);
+    setPendingChangesById({});
+  }
+
+  function handleQueueStatusChange(unit: OrgUnit) {
+    if (!roleCapabilities.organization.updateStatus) {
+      return;
+    }
+
+    applyPendingChanges(unit.id, { status: unit.status === "Activa" ? "Inactiva" : "Activa" });
+  }
+
+  function applyPendingChanges(unitId: string, changes: PendingOrgUnitChange) {
+    const originalUnit = unitsById[unitId];
+
+    if (!originalUnit) {
+      return;
+    }
+
+    setPendingChangesById((current) => {
+      const next = { ...current };
+      const normalized = getNormalizedPendingChange(originalUnit, {
+        ...current[unitId],
+        ...changes,
+      });
+
+      if (normalized) {
+        next[unitId] = normalized;
+      } else {
+        delete next[unitId];
+      }
+
+      return next;
+    });
+  }
+
+  function resetPendingChanges(unitId: string) {
+    setPendingChangesById((current) => {
+      if (!current[unitId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[unitId];
+      return next;
+    });
+  }
 
   return (
     <section className="org-page">
       <header className="page-header page-header-inline">
         <div>
           <span className="brand-kicker">Gobierno maestro</span>
-          <h2>Estructura organica</h2>
+          <div className="page-title-with-icon">
+            <span className="page-title-icon">
+              <AppIcon name="organization" size={22} strokeWidth={2.1} />
+            </span>
+            <h2>Administracion de dependencias</h2>
+          </div>
           <p className="page-copy">
-            Esta seccion no debe eliminarse. Debe evolucionar a maestro organizacional:
-            organigrama navegable, mantenimiento administrado y base para RAT, actividades,
-            activos, permisos y reportes.
+            La estructura organica se gestiona como maestro transversal desde una sola tabla:
+            cambio rapido de estado, detalle contextual y persistencia administrativa centralizada.
+          </p>
+          <p className="permission-hint">
+            Rol actual: <strong>{roleCapabilities.label}</strong>. Los cambios quedan en borrador
+            hasta confirmar el guardado general del modulo.
           </p>
         </div>
 
         <div className="registry-header-actions">
-          <div className="segmented-switch" role="tablist" aria-label="Vista de estructura organica">
+          {roleCapabilities.organization.save ? (
             <button
               type="button"
-              className={viewMode === "arbol" ? "segmented-switch-active" : undefined}
-              onClick={() => setViewMode("arbol")}
+              className="button-primary"
+              disabled={!hasPendingChanges}
+              onClick={handleSaveAllChanges}
             >
-              Arbol institucional
+              Guardar cambios
             </button>
-            <button
-              type="button"
-              className={viewMode === "administracion" ? "segmented-switch-active" : undefined}
-              onClick={() => setViewMode("administracion")}
-            >
-              Administracion
-            </button>
-            <button
-              type="button"
-              className={viewMode === "impacto" ? "segmented-switch-active" : undefined}
-              onClick={() => setViewMode("impacto")}
-            >
-              Impacto en el sistema
-            </button>
-          </div>
+          ) : null}
         </div>
       </header>
 
-      <div className="summary-grid">
-        {stats.map((item) => (
-          <article key={item.label} className="stat-card">
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </article>
-        ))}
-      </div>
+      <ExecutiveKpiGrid items={stats} />
 
       <div className="org-toolbar panel">
         <label className="field">
-          <span>Buscar unidad o sigla</span>
+          <span>Buscar dependencia o sigla</span>
           <input
             className="input"
             placeholder="Ej. DSGSIF, DNTI, salud, patrocinio"
@@ -265,401 +305,353 @@ export function OrganizationStructurePage() {
             onChange={(event) => setTypeFilter(event.target.value as "Todos" | OrgUnitType)}
           >
             <option value="Todos">Todos</option>
-            {getOrgTypes(units).map((item) => (
+            {getOrgTypes(displayedUnits).map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>
             ))}
           </select>
         </label>
+
+        <label className="field">
+          <span>Uso</span>
+          <select
+            className="input"
+            value={usageFilter}
+            onChange={(event) => setUsageFilter(event.target.value as "Todos" | "Con RAT" | "Sin uso")}
+          >
+            <option value="Todos">Todos</option>
+            <option value="Con RAT">Con RAT</option>
+            <option value="Sin uso">Sin uso</option>
+          </select>
+        </label>
       </div>
 
-      {viewMode === "arbol" ? (
-        <div className="org-layout">
-          <section className="panel org-tree-pane">
-            <div className="panel-heading">
-              <div>
-                <span className="brand-kicker">Explorador visual</span>
-                <h3>Organigrama funcional del IESS</h3>
-              </div>
-              <span className="pill">{visibleTreeRows.length} nodos visibles</span>
-            </div>
-
-            <div className="org-tree-list">
-              {visibleTreeRows.map(({ unit, level }) => (
-                <button
-                  key={unit.id}
-                  type="button"
-                  className={[
-                    "org-tree-node",
-                    selectedUnit?.id === unit.id ? "org-tree-node-selected" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={{ paddingLeft: `${16 + level * 18}px` }}
-                  onClick={() => setSelectedUnitId(unit.id)}
-                >
-                  <div className="org-tree-node-copy">
-                    <strong>{unit.nombre}</strong>
-                    <small>
-                      {unit.sigla ? `${unit.sigla} · ` : "Sigla pendiente · "}
-                      {unit.tipo}
-                    </small>
-                  </div>
-                  <span className={unit.status === "Activa" ? "pill status-pill-vigente" : "pill status-pill-archivado"}>
-                    {unit.status}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <aside className="panel org-detail-pane">
-            {selectedUnit ? (
-              <>
-                <div className="org-detail-header">
-                  <span className="brand-kicker">Unidad seleccionada</span>
-                  <h3>{selectedUnit.nombre}</h3>
-                  <div className="org-detail-badges">
-                    <span className="pill">{selectedUnit.tipo}</span>
-                    <span className={selectedUnit.status === "Activa" ? "pill status-pill-vigente" : "pill status-pill-archivado"}>
-                      {selectedUnit.status}
-                    </span>
-                    <span className="pill pill-muted">
-                      {selectedUnit.sigla ? selectedUnit.sigla : "Sigla pendiente"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="detail-block">
-                  <h4>Ficha organizacional</h4>
-                  <dl className="detail-grid">
-                    <div>
-                      <dt>Jerarquia</dt>
-                      <dd>{getHierarchyLabel(selectedUnit, unitsById)}</dd>
-                    </div>
-                    <div>
-                      <dt>Responsable referencial</dt>
-                      <dd>{selectedUnit.ownerRole}</dd>
-                    </div>
-                    <div>
-                      <dt>Unidades hijas</dt>
-                      <dd>{selectedChildren.length}</dd>
-                    </div>
-                    <div>
-                      <dt>Sigla</dt>
-                      <dd>{selectedUnit.sigla ?? "Pendiente de definicion"}</dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <div className="org-impact-grid">
-                  <article className="org-impact-card">
-                    <span>RAT asociados</span>
-                    <strong>{relatedRats.length}</strong>
-                    <small>Registros que dependen de esta unidad o de su arbol descendente.</small>
-                  </article>
-                  <article className="org-impact-card">
-                    <span>Actividades ejecutoras</span>
-                    <strong>{relatedActivities.length}</strong>
-                    <small>Actividades donde esta unidad opera, controla o ejecuta.</small>
-                  </article>
-                  <article className="org-impact-card">
-                    <span>Siglas pendientes</span>
-                    <strong>{selectedSiglaPending}</strong>
-                    <small>Dato maestro pendiente que afecta filtros, reportes y codigos.</small>
-                  </article>
-                </div>
-
-                <div className="detail-block">
-                  <h4>Subunidades directas</h4>
-                  {selectedChildren.length > 0 ? (
-                    <div className="org-chip-grid">
-                      {selectedChildren.map((child) => (
-                        <button
-                          key={child.id}
-                          type="button"
-                          className="org-chip-card"
-                          onClick={() => setSelectedUnitId(child.id)}
-                        >
-                          <strong>{child.nombre}</strong>
-                          <span>{child.sigla ?? "Sigla pendiente"} · {child.tipo}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      Esta unidad no tiene hijas directas en la estructura actual.
-                    </div>
-                  )}
-                </div>
-
-                <div className="detail-block">
-                  <h4>Por que esta seccion no debe eliminarse</h4>
-                  <ul className="helper-list">
-                    <li>Define a que unidad padre se le abre un RAT y que unidad lo ejecuta.</li>
-                    <li>Evita texto libre y basura en dependencias, subdirecciones y responsables.</li>
-                    <li>Permite filtros, permisos y reportes por arbol organizacional.</li>
-                    <li>Prepara el terreno para activos, incidentes, trazabilidad y matrices de riesgo.</li>
-                  </ul>
-                </div>
-              </>
-            ) : (
-              <div className="empty-state">No hay una unidad seleccionada.</div>
-            )}
-          </aside>
-        </div>
-      ) : null}
-
-      {viewMode === "administracion" ? (
-        <div className="org-layout">
-          <section className="panel org-admin-pane">
-            <div className="panel-heading">
-              <div>
-                <span className="brand-kicker">Gobierno del dato maestro</span>
-                <h3>Mantenimiento administrado</h3>
-              </div>
-              <span className="pill">{maintenanceUnits.length} registros filtrados</span>
-            </div>
-
-            <div className="org-governance-banner">
-              Las altas, bajas logicas y cambios de estado deben ocurrir aqui, desde un panel de
-              administracion con trazabilidad, no directamente en base de datos.
-            </div>
-
-            <div className="table-wrapper">
-              <table className="registry-table">
-                <thead>
-                  <tr>
-                    <th>Unidad</th>
-                    <th>Sigla</th>
-                    <th>Tipo</th>
-                    <th>Padre</th>
-                    <th>Estado</th>
-                    <th>Uso</th>
-                    <th>Accion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {maintenanceUnits.map((unit) => {
-                    const linkedRats = countLinkedRats(unit, ratRecords);
-                    const linkedActivities = countLinkedActivities(unit, activityRecords);
-                    const parentName = unit.parentId ? unitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz";
-
-                    return (
-                      <tr
-                        key={unit.id}
-                        className={selectedUnit?.id === unit.id ? "table-row-selected" : undefined}
-                        onClick={() => setSelectedUnitId(unit.id)}
-                      >
-                        <td>
-                          <div className="table-primary-copy">
-                            <strong>{unit.nombre}</strong>
-                            <small>{unit.ownerRole}</small>
-                          </div>
-                        </td>
-                        <td>{unit.sigla ?? "Pendiente"}</td>
-                        <td>{unit.tipo}</td>
-                        <td>{parentName}</td>
-                        <td>
-                          <span className={unit.status === "Activa" ? "pill status-pill-vigente" : "pill status-pill-archivado"}>
-                            {unit.status}
-                          </span>
-                        </td>
-                        <td>{linkedRats} RAT · {linkedActivities} act.</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="button-secondary button-compact"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleUnitStatus(unit.id, setUnits);
-                            }}
-                          >
-                            {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <aside className="panel org-detail-pane">
-            {selectedUnit ? (
-              <>
-                <div className="org-detail-header">
-                  <span className="brand-kicker">Regla recomendada</span>
-                  <h3>Panel administrador de estructura</h3>
-                </div>
-
-                <div className="detail-block">
-                  <h4>Unidad activa en mantenimiento</h4>
-                  <dl className="detail-grid">
-                    <div>
-                      <dt>Unidad</dt>
-                      <dd>{selectedUnit.nombre}</dd>
-                    </div>
-                    <div>
-                      <dt>Estado actual</dt>
-                      <dd>{selectedUnit.status}</dd>
-                    </div>
-                    <div>
-                      <dt>Sigla</dt>
-                      <dd>{selectedUnit.sigla ?? "Pendiente"}</dd>
-                    </div>
-                    <div>
-                      <dt>Responsable referencial</dt>
-                      <dd>{selectedUnit.ownerRole}</dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <div className="detail-block">
-                  <h4>Buenas practicas de mantenimiento</h4>
-                  <ul className="helper-list">
-                    <li>Alta o baja logica de unidades sin editar directamente tablas productivas.</li>
-                    <li>Historico de cambios para auditoria y rastreo de responsable.</li>
-                    <li>Bloqueo de eliminacion fisica si ya existen RAT, actividades o activos asociados.</li>
-                    <li>Control por rol para que solo Administrador o Gobierno del Dato modifique la estructura.</li>
-                  </ul>
-                </div>
-
-                <div className="detail-block">
-                  <h4>Impacto si se deshabilita</h4>
-                  <ul className="helper-list">
-                    <li>RAT vinculados: {countLinkedRats(selectedUnit, ratRecords)}</li>
-                    <li>Actividades vinculadas: {countLinkedActivities(selectedUnit, activityRecords)}</li>
-                    <li>La unidad debe quedar fuera de nuevos formularios, pero conservar historico.</li>
-                  </ul>
-                </div>
-              </>
-            ) : null}
-          </aside>
-        </div>
-      ) : null}
-
-      {viewMode === "impacto" ? (
-        <div className="org-impact-layout">
-          <article className="panel dashboard-panel">
-            <span className="brand-kicker">Conexiones reales</span>
-            <h3>Como alimenta al resto del sistema</h3>
-            <div className="org-impact-grid">
-              <article className="org-impact-card">
-                <span>RAT</span>
-                <strong>{relatedRats.length}</strong>
-                <small>Define a quien pertenece el registro y quien lo formaliza.</small>
-              </article>
-              <article className="org-impact-card">
-                <span>Actividades</span>
-                <strong>{relatedActivities.length}</strong>
-                <small>Controla la unidad ejecutora y evita asignaciones ambiguas.</small>
-              </article>
-              <article className="org-impact-card">
-                <span>Permisos y filtros</span>
-                <strong>{selectedSubtree.length}</strong>
-                <small>Habilita segmentacion por arbol organizacional completo.</small>
-              </article>
-              <article className="org-impact-card">
-                <span>Calidad de dato</span>
-                <strong>{selectedSiglaPending}</strong>
-                <small>Identifica deuda maestra que debemos cerrar antes de escalar.</small>
-              </article>
-            </div>
-          </article>
-
-          <div className="dashboard-grid">
-            <article className="panel dashboard-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="brand-kicker">RAT vinculados</span>
-                  <h3>Registros impactados</h3>
-                </div>
-              </div>
-              <div className="dashboard-list">
-                {relatedRats.length > 0 ? (
-                  relatedRats.map((rat) => (
-                    <article key={rat.id} className="dashboard-list-item">
-                      <div>
-                        <strong>{rat.codigo}</strong>
-                        <span>{rat.nombre}</span>
-                      </div>
-                      <div className="dashboard-list-meta">
-                        <span className="pill">{rat.estado}</span>
-                        <span className="pill">{rat.riesgo}</span>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <div className="empty-state">No hay RAT asociados al alcance seleccionado.</div>
-                )}
-              </div>
-            </article>
-
-            <article className="panel dashboard-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="brand-kicker">Actividades vinculadas</span>
-                  <h3>Operacion afectada</h3>
-                </div>
-              </div>
-              <div className="dashboard-list">
-                {relatedActivities.length > 0 ? (
-                  relatedActivities.map((activity) => (
-                    <article key={activity.id} className="dashboard-list-item">
-                      <div>
-                        <strong>{activity.codigo}</strong>
-                        <span>{activity.nombre}</span>
-                      </div>
-                      <div className="dashboard-list-meta">
-                        <span className="pill">{activity.estado}</span>
-                        <span className="pill">{activity.riesgo}</span>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <div className="empty-state">No hay actividades asociadas al alcance seleccionado.</div>
-                )}
-              </div>
-            </article>
-
-            <article className="panel dashboard-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="brand-kicker">Distribucion por estado</span>
-                  <h3>Semaforo operativo</h3>
-                </div>
-              </div>
-              <ul className="helper-list">
-                {Object.entries(relatedActivitiesByStatus).map(([status, total]) => (
-                  <li key={status}>
-                    {status}: {total}
-                  </li>
-                ))}
-              </ul>
-            </article>
-
-            <article className="panel dashboard-panel">
-              <div className="panel-heading">
-                <div>
-                  <span className="brand-kicker">Distribucion por riesgo</span>
-                  <h3>Prioridad de atencion</h3>
-                </div>
-              </div>
-              <ul className="helper-list">
-                {Object.entries(relatedActivitiesByRisk).map(([risk, total]) => (
-                  <li key={risk}>
-                    {risk}: {total}
-                  </li>
-                ))}
-              </ul>
-            </article>
+      <section className="panel org-admin-single">
+        <div className="panel-heading panel-heading-compact">
+          <div>
+            <span className="brand-kicker">Tabla maestra</span>
+            <h3>Dependencias de la estructura organizacional</h3>
+          </div>
+          <div className="actions">
+            <span className="pill">{maintenanceUnits.length} registros filtrados</span>
+            {hasPendingChanges ? <span className="pill pill-muted">Cambios pendientes</span> : null}
           </div>
         </div>
+
+        <TableScrollFrame className="table-wrapper-matrix" maxHeight="none">
+          <table className="registry-table org-admin-table">
+            <thead>
+              <tr>
+                <th>Dependencia</th>
+                <th>Sigla</th>
+                <th>Tipo</th>
+                <th>Padre</th>
+                <th>Estado</th>
+                <th>Uso</th>
+                <th>Detalle</th>
+                <th>Accion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {maintenanceUnits.map((unit) => {
+                const linkedRats = countLinkedRats(unit, ratRecords);
+                const linkedActivities = countLinkedActivities(unit, activityRecords);
+                const parentName = unit.parentId ? displayedUnitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz";
+                const hasPendingUnitChanges = Boolean(pendingChangesById[unit.id]);
+
+                return (
+                  <tr key={unit.id}>
+                    <td>
+                      <strong>{unit.nombre}</strong>
+                    </td>
+                    <td>{unit.sigla ?? "Pendiente"}</td>
+                    <td>{unit.tipo}</td>
+                    <td>{parentName}</td>
+                    <td>
+                      <div className="org-status-stack">
+                        <span
+                          className={
+                            unit.status === "Activa"
+                              ? "pill status-pill-vigente"
+                              : "pill status-pill-archivado"
+                          }
+                        >
+                          {unit.status}
+                        </span>
+                        {hasPendingUnitChanges ? (
+                          <small className="org-status-pending">Pendiente de guardar</small>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      {linkedRats} RAT · {linkedActivities} act.
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="button-table-action button-table-action-secondary"
+                        onClick={() => setActiveUnitId(unit.id)}
+                      >
+                        Detalle
+                      </button>
+                    </td>
+                    <td>
+                      {roleCapabilities.organization.updateStatus ? (
+                        <button
+                          type="button"
+                          className={
+                            unit.status === "Activa"
+                              ? "button-table-action button-table-action-danger"
+                              : "button-table-action"
+                          }
+                          onClick={() => handleQueueStatusChange(unit)}
+                        >
+                          {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
+                        </button>
+                      ) : (
+                        <span className="selection-action-empty">Solo lectura</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableScrollFrame>
+      </section>
+
+      {activeUnit ? (
+        <OrgUnitManagementModal
+          activityRecords={activityRecords}
+          children={childrenByParent[activeUnit.id] ?? []}
+          onApplyChanges={applyPendingChanges}
+          onClose={() => setActiveUnitId(null)}
+          onResetChanges={resetPendingChanges}
+          pendingChange={activeUnitPendingChange}
+          ratRecords={ratRecords}
+          roleCanEdit={roleCapabilities.organization.save}
+          unit={activeUnit}
+          unitsById={displayedUnitsById}
+        />
       ) : null}
     </section>
+  );
+}
+
+function OrgUnitManagementModal({
+  activityRecords,
+  children,
+  onApplyChanges,
+  onClose,
+  onResetChanges,
+  pendingChange,
+  ratRecords,
+  roleCanEdit,
+  unit,
+  unitsById,
+}: {
+  activityRecords: ActivityRegistryRecord[];
+  children: OrgUnit[];
+  onApplyChanges: (unitId: string, changes: PendingOrgUnitChange) => void;
+  onClose: () => void;
+  onResetChanges: (unitId: string) => void;
+  pendingChange?: PendingOrgUnitChange;
+  ratRecords: RatRegistryRecord[];
+  roleCanEdit: boolean;
+  unit: OrgUnit;
+  unitsById: Record<string, OrgUnit>;
+}) {
+  const linkedRats = countLinkedRats(unit, ratRecords);
+  const linkedActivities = countLinkedActivities(unit, activityRecords);
+  const [draftName, setDraftName] = useState(unit.nombre);
+  const [draftSigla, setDraftSigla] = useState(unit.sigla ?? "");
+  const [draftOwnerRole, setDraftOwnerRole] = useState(unit.ownerRole);
+  const hasUnitPendingChanges = Boolean(pendingChange);
+  const isApplyDisabled = draftName.trim().length === 0 || draftOwnerRole.trim().length === 0;
+
+  useEffect(() => {
+    setDraftName(unit.nombre);
+    setDraftSigla(unit.sigla ?? "");
+    setDraftOwnerRole(unit.ownerRole);
+  }, [unit.id, unit.nombre, unit.ownerRole, unit.sigla]);
+
+  function handleApply() {
+    onApplyChanges(unit.id, {
+      nombre: draftName,
+      sigla: draftSigla,
+      ownerRole: draftOwnerRole,
+    });
+    onClose();
+  }
+
+  return (
+    <div
+      className="report-preview-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="organization-unit-detail-title"
+    >
+      <button
+        type="button"
+        className="report-preview-modal-backdrop"
+        aria-label="Cerrar gestion de dependencia"
+        onClick={onClose}
+      />
+
+      <div className="report-preview-modal-dialog org-detail-modal">
+        <header className="report-preview-modal-header">
+          <div>
+            <span className="brand-kicker">Gestion de dependencia</span>
+            <div className="page-title-with-icon page-title-with-icon-modal">
+              <span className="page-title-icon">
+                <AppIcon name="organization" size={20} strokeWidth={2.1} />
+              </span>
+              <h3 id="organization-unit-detail-title">{unit.nombre}</h3>
+            </div>
+            <p className="page-copy">
+              Revise impacto y edite los datos maestros. La persistencia final se confirma desde la
+              tabla principal con el guardado global.
+            </p>
+          </div>
+
+          <div className="report-preview-modal-actions">
+            <button type="button" className="button-secondary" onClick={onClose}>
+              Cerrar
+            </button>
+          </div>
+        </header>
+
+        <div className="report-preview-modal-body">
+          <div className="org-detail-modal-grid">
+            <div className="detail-block">
+              <h4>Identidad organizacional</h4>
+              <dl className="detail-grid">
+                <div>
+                  <dt>Estado actual</dt>
+                  <dd>{unit.status}</dd>
+                </div>
+                <div>
+                  <dt>Tipo</dt>
+                  <dd>{unit.tipo}</dd>
+                </div>
+                <div>
+                  <dt>Padre</dt>
+                  <dd>{unit.parentId ? unitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz"}</dd>
+                </div>
+                <div>
+                  <dt>Jerarquia</dt>
+                  <dd>{getHierarchyLabel(unit, unitsById)}</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="detail-block">
+              <h4>Impacto operativo</h4>
+              <dl className="detail-grid">
+                <div>
+                  <dt>RAT vinculados</dt>
+                  <dd>{linkedRats}</dd>
+                </div>
+                <div>
+                  <dt>Actividades vinculadas</dt>
+                  <dd>{linkedActivities}</dd>
+                </div>
+                <div>
+                  <dt>Dependencias hijas</dt>
+                  <dd>{children.length}</dd>
+                </div>
+                <div>
+                  <dt>Resultado esperado</dt>
+                  <dd>{hasUnitPendingChanges ? "Cambios pendientes de guardar" : "Sin cambios pendientes"}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {children.length > 0 ? (
+              <div className="detail-block">
+                <h4>Dependencias hijas</h4>
+                <div className="org-chip-grid">
+                  {children.map((child) => (
+                    <article key={child.id} className="org-chip-card org-chip-card-static">
+                      <strong>{child.nombre}</strong>
+                      <span>
+                        {child.sigla ?? "Sigla pendiente"} · {child.tipo}
+                      </span>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="detail-block">
+              <h4>Edicion del maestro</h4>
+              <div className="detail-form-grid">
+                <label className="field">
+                  <span>Nombre de la dependencia</span>
+                  <input
+                    className="input"
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    disabled={!roleCanEdit}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Sigla</span>
+                  <input
+                    className="input"
+                    value={draftSigla}
+                    onChange={(event) => setDraftSigla(event.target.value.toUpperCase())}
+                    disabled={!roleCanEdit}
+                    placeholder="Ej. DSGSIF"
+                  />
+                </label>
+
+                <label className="field detail-form-span">
+                  <span>Responsable referencial</span>
+                  <input
+                    className="input"
+                    value={draftOwnerRole}
+                    onChange={(event) => setDraftOwnerRole(event.target.value)}
+                    disabled={!roleCanEdit}
+                  />
+                </label>
+              </div>
+
+              <div className="activity-action-modal-actions">
+                {hasUnitPendingChanges ? (
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-secondary"
+                    onClick={() => {
+                      onResetChanges(unit.id);
+                      onClose();
+                    }}
+                  >
+                    Descartar cambios de esta dependencia
+                  </button>
+                ) : null}
+                {roleCanEdit ? (
+                  <button
+                    type="button"
+                    className="button-table-action"
+                    disabled={isApplyDisabled}
+                    onClick={handleApply}
+                  >
+                    Aplicar cambios
+                  </button>
+                ) : null}
+              </div>
+              <p className="selection-action-empty">
+                La deshabilitacion se realiza desde la tabla principal. Este modal se reserva para
+                revisar impacto y ajustar los datos maestros.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -674,14 +666,6 @@ function isMatch(unit: OrgUnit, normalizedSearch: string) {
   return normalize([unit.nombre, unit.sigla, unit.tipo].filter(Boolean).join(" ")).includes(
     normalizedSearch,
   );
-}
-
-function isStatusVisible(unit: OrgUnit, filter: "Todas" | OrgUnitStatus) {
-  return filter === "Todas" || unit.status === filter;
-}
-
-function isTypeVisible(unit: OrgUnit, filter: "Todos" | OrgUnitType) {
-  return filter === "Todos" || unit.tipo === filter;
 }
 
 function getOrgTypes(units: OrgUnit[]) {
@@ -716,32 +700,60 @@ function countLinkedActivities(unit: OrgUnit, activityRecords: ActivityRegistryR
   ).length;
 }
 
-function toggleUnitStatus(
-  unitId: string,
-  setUnits: Dispatch<SetStateAction<OrgUnit[]>>,
-) {
-  setUnits((currentUnits) =>
-    currentUnits.map((unit) =>
-      unit.id === unitId
-        ? { ...unit, status: unit.status === "Activa" ? "Inactiva" : "Activa" }
-        : unit,
-    ),
-  );
-}
+function mergeUnitWithPendingChange(unit: OrgUnit, change?: PendingOrgUnitChange): OrgUnit {
+  if (!change) {
+    return unit;
+  }
 
-function summarizeActivitiesByStatus(activityRecords: ActivityRegistryRecord[]) {
   return {
-    Borrador: activityRecords.filter((item) => item.estado === "Borrador").length,
-    "En revision": activityRecords.filter((item) => item.estado === "En revision").length,
-    Vigente: activityRecords.filter((item) => item.estado === "Vigente").length,
-    Archivado: activityRecords.filter((item) => item.estado === "Archivado").length,
+    ...unit,
+    ...change,
+    nombre: change.nombre !== undefined ? normalizeText(change.nombre) : unit.nombre,
+    sigla: change.sigla !== undefined ? normalizeOptionalText(change.sigla) : unit.sigla,
+    ownerRole: change.ownerRole !== undefined ? normalizeText(change.ownerRole) : unit.ownerRole,
+    status: change.status ?? unit.status,
   };
 }
 
-function summarizeActivitiesByRisk(activityRecords: ActivityRegistryRecord[]) {
-  return {
-    Bajo: activityRecords.filter((item) => item.riesgo === "Bajo").length,
-    Medio: activityRecords.filter((item) => item.riesgo === "Medio").length,
-    Alto: activityRecords.filter((item) => item.riesgo === "Alto").length,
-  };
+function getNormalizedPendingChange(
+  originalUnit: OrgUnit,
+  draft: PendingOrgUnitChange,
+): PendingOrgUnitChange | null {
+  const next: PendingOrgUnitChange = {};
+
+  if (draft.nombre !== undefined) {
+    const normalizedName = normalizeText(draft.nombre);
+    if (normalizedName !== originalUnit.nombre) {
+      next.nombre = normalizedName;
+    }
+  }
+
+  if (draft.sigla !== undefined) {
+    const normalizedSigla = normalizeOptionalText(draft.sigla);
+    if ((normalizedSigla ?? "") !== (originalUnit.sigla ?? "")) {
+      next.sigla = normalizedSigla;
+    }
+  }
+
+  if (draft.ownerRole !== undefined) {
+    const normalizedOwner = normalizeText(draft.ownerRole);
+    if (normalizedOwner !== originalUnit.ownerRole) {
+      next.ownerRole = normalizedOwner;
+    }
+  }
+
+  if (draft.status !== undefined && draft.status !== originalUnit.status) {
+    next.status = draft.status;
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeOptionalText(value?: string) {
+  const normalized = normalizeText(value ?? "");
+  return normalized.length > 0 ? normalized : undefined;
 }

@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { AuthorizationScopeService } from '../auth/authorization-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ArchiveActividadDto } from './dto/archive-actividad.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
@@ -18,10 +19,12 @@ export class ActividadesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly authz: AuthorizationScopeService,
   ) {}
 
-  async findAll(query: QueryActividadDto) {
+  async findAll(query: QueryActividadDto, actor: AuthenticatedUser) {
     const where: Prisma.ActividadTratamientoWhereInput = {
+      AND: [this.authz.actividadWhere(actor)],
       ...(query.ratId ? { ratId: query.ratId } : {}),
       ...(query.estadoGeneral ? { estadoGeneral: query.estadoGeneral } : {}),
       ...(query.search
@@ -69,9 +72,12 @@ export class ActividadesService {
     return { data };
   }
 
-  async findOne(id: number) {
-    const data = await this.prisma.actividadTratamiento.findUnique({
-      where: { id },
+  async findOne(id: number, actor: AuthenticatedUser) {
+    const data = await this.prisma.actividadTratamiento.findFirst({
+      where: {
+        id,
+        AND: [this.authz.actividadWhere(actor)],
+      },
       include: {
         rat: {
           include: {
@@ -94,7 +100,8 @@ export class ActividadesService {
     dto: CreateActividadDto,
     actor?: AuthenticatedUser,
   ) {
-    const rat = await this.ensureRat(ratId);
+    this.authz.assertCanAuthorTreatment(actor);
+    const rat = await this.ensureRat(ratId, actor);
     await this.ensureCodigoDisponible(ratId, dto.codigo);
 
     if (rat.estadoGeneral === 'ARCHIVADO') {
@@ -150,7 +157,12 @@ export class ActividadesService {
   }
 
   async update(id: number, dto: UpdateActividadDto, actor?: AuthenticatedUser) {
-    const actividad = await this.ensureExists(id);
+    if (isActivityStatusOnlyUpdate(dto)) {
+      this.authz.assertCanManageContentStates(actor);
+    } else {
+      this.authz.assertCanAuthorTreatment(actor);
+    }
+    const actividad = await this.ensureExists(id, actor);
 
     if (dto.codigo !== undefined && dto.codigo !== actividad.codigo) {
       await this.ensureCodigoDisponible(actividad.ratId, dto.codigo, id);
@@ -194,7 +206,8 @@ export class ActividadesService {
     dto: ArchiveActividadDto,
     actor?: AuthenticatedUser,
   ) {
-    const existing = await this.ensureExists(id);
+    this.authz.assertCanAdministerWorkflow(actor);
+    const existing = await this.ensureExists(id, actor);
 
     const data = await this.prisma.$transaction(async (tx) => {
       const archived = await tx.actividadTratamiento.update({
@@ -228,8 +241,8 @@ export class ActividadesService {
     };
   }
 
-  async findVersiones(id: number) {
-    await this.ensureExists(id);
+  async findVersiones(id: number, actor: AuthenticatedUser) {
+    await this.ensureExists(id, actor);
 
     const data = await this.prisma.actividadVersion.findMany({
       where: { actividadId: id },
@@ -242,9 +255,12 @@ export class ActividadesService {
     return { data };
   }
 
-  async detail(id: number) {
-    const actividad = await this.prisma.actividadTratamiento.findUnique({
-      where: { id },
+  async detail(id: number, actor: AuthenticatedUser) {
+    const actividad = await this.prisma.actividadTratamiento.findFirst({
+      where: {
+        id,
+        AND: [this.authz.actividadWhere(actor)],
+      },
       include: {
         rat: {
           include: {
@@ -292,9 +308,12 @@ export class ActividadesService {
     };
   }
 
-  private async ensureRat(ratId: number) {
-    const rat = await this.prisma.rat.findUnique({
-      where: { id: ratId },
+  private async ensureRat(ratId: number, actor?: AuthenticatedUser) {
+    const rat = await this.prisma.rat.findFirst({
+      where: {
+        id: ratId,
+        ...(actor ? { AND: [this.authz.ratWhere(actor)] } : {}),
+      },
     });
 
     if (!rat) {
@@ -304,9 +323,12 @@ export class ActividadesService {
     return rat;
   }
 
-  private async ensureExists(id: number) {
-    const actividad = await this.prisma.actividadTratamiento.findUnique({
-      where: { id },
+  private async ensureExists(id: number, actor?: AuthenticatedUser) {
+    const actividad = await this.prisma.actividadTratamiento.findFirst({
+      where: {
+        id,
+        ...(actor ? { AND: [this.authz.actividadWhere(actor)] } : {}),
+      },
     });
 
     if (!actividad) {
@@ -335,4 +357,13 @@ export class ActividadesService {
       );
     }
   }
+}
+
+function isActivityStatusOnlyUpdate(dto: UpdateActividadDto) {
+  return (
+    dto.estadoGeneral !== undefined &&
+    dto.codigo === undefined &&
+    dto.nombre === undefined &&
+    dto.descripcion === undefined
+  );
 }

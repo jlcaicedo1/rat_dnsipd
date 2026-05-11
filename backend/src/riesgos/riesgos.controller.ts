@@ -21,10 +21,12 @@ export class RiesgosController {
   constructor(private readonly riesgosService: RiesgosService) {}
 
   @Get('actividad-versiones/:actividadVersionId/riesgos')
+  @UseGuards(JwtAuthGuard)
   findByActividadVersion(
     @Param('actividadVersionId', ParseIntPipe) actividadVersionId: number,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.riesgosService.findByActividadVersion(actividadVersionId);
+    return this.riesgosService.findByActividadVersion(actividadVersionId, user);
   }
 
   @Post('actividad-versiones/:actividadVersionId/riesgos')
@@ -38,8 +40,12 @@ export class RiesgosController {
   }
 
   @Get('riesgos/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.riesgosService.findOne(id);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.riesgosService.findOne(id, user);
   }
 
   @Patch('riesgos/:id')

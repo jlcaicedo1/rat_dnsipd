@@ -1,0 +1,137 @@
+rat_dnsipd - deployment requirements for AlmaLinux + Docker
+Generated from repository manifests on 2026-04-27.
+
+IMPORTANT
+- This file is a deployment and dependency checklist for the Node.js/Prisma/React project.
+- It is not a Python pip requirements file.
+
+1. BASE PLATFORM REQUIREMENTS
+- Operating system: AlmaLinux 10.x
+- Container runtime: Docker Engine 27+ recommended
+- Orchestration: Docker Compose plugin 2.29+ recommended
+- Source control: Git 2.40+ recommended
+- Optional administration tools: curl, bash, openssl, unzip
+
+2. PROJECT STRUCTURE
+- Root package name: sistema-rat-mvp
+- Version: 0.1.0
+- npm workspaces:
+  - backend
+  - frontend
+
+3. NETWORK PORTS
+- 3000/tcp: backend API
+- 5173/tcp: frontend Vite development server only
+- 5432/tcp: PostgreSQL
+- 5555/tcp: Prisma Studio optional, local administration only
+- 9229/tcp: Node inspector optional, debug only
+
+4. EXTERNAL SERVICES
+- PostgreSQL 16.x recommended
+- Prisma ORM 5.22.0
+- Prisma datasource provider: postgresql
+
+5. REQUIRED ENVIRONMENT VARIABLES
+- DATABASE_URL=postgresql://rat_user:rat_password@postgres:5432/rat_db?schema=public
+- JWT_SECRET=change_me
+- JWT_EXPIRES_IN=8h
+- PORT=3000
+- NODE_ENV=production
+
+6. BACKEND RUNTIME DEPENDENCIES
+- @nestjs/common ^10.4.2
+- @nestjs/config ^3.2.3
+- @nestjs/core ^10.4.2
+- @nestjs/jwt ^10.2.0
+- @nestjs/passport ^10.0.3
+- @nestjs/platform-express ^10.4.2
+- @prisma/client ^5.22.0
+- bcrypt ^5.1.1
+- class-transformer ^0.5.1
+- class-validator ^0.14.1
+- passport ^0.7.0
+- passport-jwt ^4.0.1
+- reflect-metadata ^0.2.2
+- rxjs ^7.8.1
+
+7. BACKEND BUILD AND DEVELOPMENT DEPENDENCIES
+- @nestjs/cli ^10.4.5
+- @nestjs/schematics ^10.1.4
+- @nestjs/testing ^10.4.2
+- @types/bcrypt ^5.0.2
+- @types/express ^5.0.0
+- @types/node ^22.8.1
+- @types/passport-jwt ^4.0.1
+- prisma ^5.22.0
+- ts-node ^10.9.2
+- typescript ^5.6.3
+
+8. FRONTEND RUNTIME DEPENDENCIES
+- @hookform/resolvers ^3.9.0
+- @tanstack/react-query ^5.59.0
+- axios ^1.7.7
+- react ^18.3.1
+- react-dom ^18.3.1
+- react-hook-form ^7.53.1
+- react-router-dom ^6.27.0
+- zustand ^5.0.0
+- zod ^3.23.8
+
+9. FRONTEND BUILD AND DEVELOPMENT DEPENDENCIES
+- @types/react ^18.3.12
+- @types/react-dom ^18.3.1
+- @vitejs/plugin-react ^4.3.2
+- autoprefixer ^10.4.20
+- postcss ^8.4.47
+- tailwindcss ^3.4.14
+- typescript ^5.6.3
+- vite ^5.4.10
+
+10. NODE.JS AND NPM BASELINE
+- Node.js 22 LTS or newer recommended for server builds
+- npm 10+ recommended
+- The local development environment has been used successfully with:
+  - Node.js v24.15.0
+  - npm 11.12.1
+
+11. DATABASE AND ORM COMMANDS
+- Prisma client generation:
+  - npm --workspace backend run prisma:generate
+- Database migrations:
+  - npm --workspace backend run prisma:migrate
+- Seed data:
+  - npm --workspace backend run prisma:seed
+
+12. ROOT WORKSPACE COMMANDS
+- Install workspace dependencies:
+  - npm install
+- Build backend and frontend:
+  - npm run build
+- Run backend in development:
+  - npm run dev:backend
+- Run frontend in development:
+  - npm run dev:frontend
+
+13. RECOMMENDED DOCKER IMAGES
+- Backend build/runtime image:
+  - node:22-alpine or node:24-alpine
+- Frontend build image:
+  - node:22-alpine or node:24-alpine
+- Frontend runtime image if served statically:
+  - nginx:alpine
+- Database image:
+  - postgres:16
+
+14. RECOMMENDED CONTAINER ARCHITECTURE
+- 1 container for backend NestJS API
+- 1 container for frontend build/runtime
+- 1 container for PostgreSQL
+- 1 persistent Docker volume for PostgreSQL data
+- Optional reverse proxy container for TLS and routing
+
+15. DEPLOYMENT NOTES
+- The repository root contains a generic Dockerfile and compose files, but the full solution is a monorepo with backend and frontend workspaces.
+- For production on AlmaLinux, a multi-stage Docker strategy is recommended so backend, frontend, and PostgreSQL can be deployed separately.
+- Prisma requires DATABASE_URL to be available at build and migration time where applicable.
+- PostgreSQL persistence must be mapped to a Docker volume or host path.
+- Prisma Studio and Node inspector ports should not be exposed publicly in production.

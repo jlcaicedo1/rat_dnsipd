@@ -33,18 +33,30 @@ export class ActividadVersionesController {
   }
 
   @Get('actividad-versiones/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadVersionesService.findOne(id);
+  @UseGuards(JwtAuthGuard)
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadVersionesService.findOne(id, user);
   }
 
   @Get('actividad-versiones/:id/full')
-  findFull(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadVersionesService.findFull(id);
+  @UseGuards(JwtAuthGuard)
+  findFull(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadVersionesService.findFull(id, user);
   }
 
   @Get('actividad-versiones/:id/observaciones')
-  findObservaciones(@Param('id', ParseIntPipe) id: number) {
-    return this.actividadVersionesService.findObservaciones(id);
+  @UseGuards(JwtAuthGuard)
+  findObservaciones(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.actividadVersionesService.findObservaciones(id, user);
   }
 
   @Patch('actividad-versiones/:id')
