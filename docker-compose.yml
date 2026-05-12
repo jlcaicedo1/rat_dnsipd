@@ -1,16 +1,96 @@
+name: rat_dnsipd_dev
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: rat_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: rat_db
-      POSTGRES_USER: dnsipd
-      POSTGRES_PASSWORD: dnsipd
+      POSTGRES_DB: ${POSTGRES_DB:-rat_db}
+      POSTGRES_USER: ${POSTGRES_USER:-dnsipd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dnsipd}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - rat_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: development
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://dnsipd:dnsipd@postgres:5432/rat_db?schema=public}
+      JWT_SECRET: ${JWT_SECRET:-dnsipd_local_dev_secret_change_me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: development
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+      VITE_DEV_API_PROXY_TARGET: ${VITE_DEV_API_PROXY_TARGET:-http://backend:3000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app/frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  migrator:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://dnsipd:dnsipd@postgres:5432/rat_db?schema=public}
+    command: ["npx", "prisma", "migrate", "deploy", "--schema", "backend/prisma/schema.prisma"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://dnsipd:dnsipd@postgres:5432/rat_db?schema=public}
+    command: ["npm", "--workspace", "backend", "run", "prisma:seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   rat_postgres_data:

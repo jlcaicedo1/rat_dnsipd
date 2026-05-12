@@ -669,11 +669,35 @@ const USER_SEEDS: UserSeed[] = [
     dependenciaSigla: "DSGSIF",
   },
   {
+    username: "operador.dnti",
+    password: "Operador1234*",
+    nombre: "Operador DNTI",
+    email: "operador.dnti@sistema.local",
+    role: RoleCode.OPERADOR,
+    dependenciaSigla: "DNTI",
+  },
+  {
     username: "revisor",
     password: "Revisor1234*",
     nombre: "Revisor transversal",
     email: "revisor@sistema.local",
     role: RoleCode.REVISOR,
+    dependenciaSigla: null,
+  },
+  {
+    username: "aprobador.funcional",
+    password: "Aprobador1234*",
+    nombre: "Aprobador funcional",
+    email: "aprobador.funcional@sistema.local",
+    role: RoleCode.APROBADOR_FUNCIONAL,
+    dependenciaSigla: null,
+  },
+  {
+    username: "revisor.seguridad",
+    password: "Seguridad1234*",
+    nombre: "Revisor de seguridad",
+    email: "revisor.seguridad@sistema.local",
+    role: RoleCode.REVISOR_SEGURIDAD,
     dependenciaSigla: null,
   },
   {
@@ -688,7 +712,11 @@ const USER_SEEDS: UserSeed[] = [
 
 async function seedUsers(dependenciasBySigla: Map<string, number>) {
   for (const seed of USER_SEEDS) {
-    const dependenciaId = resolveDependenciaId(dependenciasBySigla, seed.dependenciaSigla);
+    const dependenciaId = resolveDependenciaId(
+      dependenciasBySigla,
+      seed.dependenciaSigla,
+      seed.username,
+    );
     const subdireccion = dependenciaId
       ? await prisma.orgSubdireccion.findFirst({
           where: { dependenciaId },
@@ -725,17 +753,21 @@ async function seedUsers(dependenciasBySigla: Map<string, number>) {
 function resolveDependenciaId(
   dependenciasBySigla: Map<string, number>,
   sigla: string | null,
+  username: string,
 ) {
   if (!sigla) {
     return null;
   }
 
-  return (
-    dependenciasBySigla.get(sigla) ??
-    dependenciasBySigla.get("DNAC") ??
-    dependenciasBySigla.values().next().value ??
-    null
-  );
+  const dependenciaId = dependenciasBySigla.get(sigla);
+
+  if (!dependenciaId) {
+    throw new Error(
+      `No se encontro la dependencia con sigla ${sigla} para el usuario semilla ${username}.`,
+    );
+  }
+
+  return dependenciaId;
 }
 
 function buildCatalogSeed(tipo: string, nombres: string[]): CatalogSeedItem[] {

@@ -2,7 +2,7 @@ import axios from "axios";
 import { getStoredSession } from "../features/auth/auth-storage";
 
 export const apiClient = axios.create({
-  baseURL: "http://localhost:3000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
 });
 
 apiClient.interceptors.request.use((config) => {

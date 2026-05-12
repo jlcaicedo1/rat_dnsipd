@@ -4,8 +4,12 @@ coverage/
 .turbo/
 .vite/
 .env
+.env.*
 .env.local
 .env.*.local
+!.env.example
+!.env.*.example
+!backend/.env.example
 *.log
 *.tsbuildinfo
 .Rhistory

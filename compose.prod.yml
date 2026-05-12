@@ -1,0 +1,85 @@
+name: rat_dnsipd_prod
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the external PostgreSQL service}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=768}
+    expose:
+      - "3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  migrator:
+    profiles: ["migrate"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the external PostgreSQL service}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["npx", "prisma", "migrate", "deploy", "--schema", "backend/prisma/schema.prisma"]
+    restart: "no"
+
+  seed:
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: build
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must point to the external PostgreSQL service}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["npm", "--workspace", "backend", "run", "prisma:seed"]
+    restart: "no"
