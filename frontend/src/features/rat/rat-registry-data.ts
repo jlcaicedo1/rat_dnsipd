@@ -99,6 +99,13 @@ export type ActivityRegistryRecord = {
   observaciones: string[];
   pendientes: string[];
   report: TreatmentReport;
+  datosPersonalesDetalle?: Array<{
+    titular: string;
+    categoria: string;
+    campos: string[];
+    justificacion: string;
+    sensible: boolean;
+  }>;
 };
 
 export type RatRegistryRecord = {

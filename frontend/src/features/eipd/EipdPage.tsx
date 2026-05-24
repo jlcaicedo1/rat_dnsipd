@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -5,6 +6,14 @@ import {
   type ExecutiveKpiItem,
 } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { apiClient } from "../../services/api-client";
+import {
+  formatDependencyScope,
+  getAssignedDependencyScope,
+  matchesAssignedDependencyScope,
+  shouldRestrictToAssignedDependency,
+  type DependencyScopeEntity,
+} from "../auth/dependency-scope";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import { buildRegistryWorkspace } from "../rat/registry-workspace";
@@ -13,6 +22,10 @@ import {
   getRatRegistryRecords,
   type ActivityRegistryRecord,
 } from "../rat/rat-registry-data";
+
+type DependenciasResponse = {
+  data: DependencyScopeEntity[];
+};
 
 type EipdEvaluationStatus =
   | "Pre-evaluacion"
@@ -83,6 +96,7 @@ const DEFAULT_EIPD_CASES: Record<number, EipdWorkspaceRecord> = {
 export function EipdPage() {
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
+  const restrictToAssignedDependency = shouldRestrictToAssignedDependency(user);
   const [searchParams] = useSearchParams();
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
@@ -97,6 +111,16 @@ export function EipdPage() {
   );
   const [activeActivityId, setActiveActivityId] = useState<number | null>(null);
   const [draft, setDraft] = useState<EipdWorkspaceRecord | null>(null);
+  const dependenciasQuery = useQuery({
+    queryKey: ["dependencias", "eipd-scope"],
+    queryFn: async () => {
+      const response = await apiClient.get<DependenciasResponse>("/dependencias", {
+        params: { activo: true },
+      });
+
+      return response.data.data;
+    },
+  });
 
   const ratRecords = useMemo(
     () => buildRegistryWorkspace(getRatRegistryRecords()),
@@ -106,16 +130,29 @@ export function EipdPage() {
     () => ratRecords.flatMap((rat) => rat.activities),
     [ratRecords],
   );
+  const assignedDependencyScope = getAssignedDependencyScope(
+    user,
+    dependenciasQuery.data ?? [],
+  );
+  const scopedActivityRecords = useMemo(
+    () =>
+      restrictToAssignedDependency
+        ? activityRecords.filter((activity) =>
+            matchesAssignedDependencyScope(activity, assignedDependencyScope),
+          )
+        : activityRecords,
+    [activityRecords, assignedDependencyScope, restrictToAssignedDependency],
+  );
 
   const eipdCases = useMemo(
     () =>
-      activityRecords
+      scopedActivityRecords
         .filter((activity) => activity.requiereEipd)
         .map((activity) => buildEipdCaseRecord(activity))
         .sort((left, right) =>
           right.ultimaActualizacion.localeCompare(left.ultimaActualizacion),
         ),
-    [activityRecords, workspaceVersion],
+    [scopedActivityRecords, workspaceVersion],
   );
 
   const dependenciaOptions = useMemo(
@@ -127,6 +164,7 @@ export function EipdPage() {
     [eipdCases],
   );
 
+  const effectiveDependencia = restrictToAssignedDependency ? "Todas" : dependencia;
   const filteredCases = useMemo(() => {
     const normalizedSearch = normalize(search);
 
@@ -144,7 +182,7 @@ export function EipdPage() {
           ].join(" "),
         ).includes(normalizedSearch);
       const matchesDependencia =
-        dependencia === "Todas" || item.dependencia === dependencia;
+        effectiveDependencia === "Todas" || item.dependencia === effectiveDependencia;
       const matchesEstado = estado === "Todos" || item.estadoEipd === estado;
       const matchesConsulta =
         consulta === "Todas" ||
@@ -159,7 +197,7 @@ export function EipdPage() {
         matchesConsulta
       );
     });
-  }, [consulta, dependencia, eipdCases, estado, search]);
+  }, [consulta, effectiveDependencia, eipdCases, estado, search]);
 
   const activeCase =
     eipdCases.find((item) => item.activityId === activeActivityId) ?? null;
@@ -181,10 +219,12 @@ export function EipdPage() {
 
   useEffect(() => {
     setSearch(searchParams.get("q") ?? "");
-    setDependencia(searchParams.get("dependencia") ?? "Todas");
+    setDependencia(
+      restrictToAssignedDependency ? "Todas" : searchParams.get("dependencia") ?? "Todas",
+    );
     setEstado(searchParams.get("estado") ?? "Todos");
     setConsulta(searchParams.get("consulta") ?? "Todas");
-  }, [searchParams]);
+  }, [restrictToAssignedDependency, searchParams]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -288,6 +328,9 @@ export function EipdPage() {
               : canApprove
                 ? "Puede revisar el expediente y aprobar el dictamen cuando corresponda."
                 : "Puede consultar la EIPD en modo de solo lectura."}
+            {restrictToAssignedDependency
+              ? ` Alcance: ${formatDependencyScope(assignedDependencyScope)}.`
+              : " Alcance: institucional transversal."}
           </p>
         </div>
       </header>
@@ -320,9 +363,14 @@ export function EipdPage() {
               className="input"
               value={dependencia}
               onChange={(event) => setDependencia(event.target.value)}
+              disabled={restrictToAssignedDependency}
             >
-              <option value="Todas">Todas</option>
-              {dependenciaOptions.map((item) => (
+              <option value="Todas">
+                {restrictToAssignedDependency
+                  ? formatDependencyScope(assignedDependencyScope)
+                  : "Todas"}
+              </option>
+              {!restrictToAssignedDependency && dependenciaOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>

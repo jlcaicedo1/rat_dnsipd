@@ -2,6 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "../../services/api-client";
+import {
+  formatDependencyScope,
+  getAssignedDependencyScope,
+  shouldRestrictToAssignedDependency,
+} from "../auth/dependency-scope";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import {
@@ -37,6 +42,8 @@ import {
   DATA_CATEGORY_OPTIONS,
   DATA_ORIGIN_OPTIONS,
   FREQUENCY_OPTIONS,
+  PERSONAL_DATA_DOMAINS,
+  PERSONAL_DATA_TITULAR_RELATIONSHIPS,
   RAT_FORM_STEPS,
   RETENTION_PATTERN_OPTIONS,
   SCOPE_OPTIONS,
@@ -96,6 +103,13 @@ type ActivosResponse = {
   data: ActivoSummary[];
 };
 
+type PersonalDataDomainSelection = {
+  fields: string[];
+  justification: string;
+};
+
+type PersonalDataDetail = Record<string, Record<string, PersonalDataDomainSelection>>;
+
 type RatDraftForm = {
   nombreTratamiento: string;
   dependenciaId: string;
@@ -106,6 +120,7 @@ type RatDraftForm = {
   descripcionBaseLegal: string;
   titulares: string[];
   categoriasDatos: string[];
+  datosPersonalesDetalle: PersonalDataDetail;
   descripcionDatos: string;
   procedenciaDatos: string;
   accionesTratamiento: string[];
@@ -149,6 +164,7 @@ const INITIAL_FORM: RatDraftForm = {
   descripcionBaseLegal: "",
   titulares: [],
   categoriasDatos: [],
+  datosPersonalesDetalle: {},
   descripcionDatos: "",
   procedenciaDatos: "",
   accionesTratamiento: [],
@@ -185,8 +201,10 @@ const STEP_REQUIREMENTS: Array<Array<(form: RatDraftForm) => boolean>> = [
     (form) => form.finalidad.trim().length > 0,
     (form) => form.baseLegal.length > 0,
   ],
-  [(form) => form.titulares.length > 0],
-  [(form) => form.categoriasDatos.length > 0],
+  [
+    (form) => form.titulares.length > 0,
+    (form) => hasPersonalDataDetail(form),
+  ],
   [
     (form) => form.procedenciaDatos.length > 0,
     (form) => form.accionesTratamiento.length > 0,
@@ -204,6 +222,7 @@ export function RatCreatePage() {
   const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
+  const restrictToAssignedDependency = shouldRestrictToAssignedDependency(user);
   const routeMode = searchParams.get("mode");
   const draftMode: "create" | TreatmentDraftMode =
     routeMode === "edit" || routeMode === "duplicate" ? routeMode : "create";
@@ -267,9 +286,13 @@ export function RatCreatePage() {
     },
   });
 
-  const dependencias = (dependenciasQuery.data ?? []).filter((item) =>
+  const activeDependencias = (dependenciasQuery.data ?? []).filter((item) =>
     isUnitAvailableForRegistration(item, activeOrganizationLookup),
   );
+  const assignedDependencyScope = getAssignedDependencyScope(user, activeDependencias);
+  const dependencias = restrictToAssignedDependency
+    ? activeDependencias.filter((item) => item.id === user?.dependenciaId)
+    : activeDependencias;
   const subdirecciones = (subdireccionesQuery.data ?? []).filter((item) =>
     isUnitAvailableForRegistration(item, activeOrganizationLookup),
   );
@@ -304,6 +327,14 @@ export function RatCreatePage() {
     catalogEntries,
     CATALOG_TYPE_KEYS.CATEGORIA_DATO,
     DATA_CATEGORY_OPTIONS,
+  );
+  const selectedPersonalDataCategories = useMemo(
+    () => getSelectedPersonalDataCategoryNames(form),
+    [form],
+  );
+  const selectedPersonalDataFields = useMemo(
+    () => getSelectedPersonalDataFieldCount(form),
+    [form],
   );
   const dataOriginOptions = getCatalogNamesByType(
     catalogEntries,
@@ -367,15 +398,14 @@ export function RatCreatePage() {
   const generatedCode = buildRatCode(selectedDependencia?.sigla ?? null);
   const currentStep = RAT_FORM_STEPS[activeStep];
   const stepProgress = STEP_REQUIREMENTS.map((checks) => getStepProgress(form, checks));
+  const currentStepProgress = stepProgress[activeStep] ?? { completed: 0, total: 0 };
   const completedRequired = stepProgress.reduce((sum, item) => sum + item.completed, 0);
   const totalRequired = stepProgress.reduce((sum, item) => sum + item.total, 0);
   const progress = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
   const progressTone = getProgressTone(progress);
   const nextLifecycleStatus = getDraftLifecycleStatus(progress);
 
-  const hasSpecialCategories = form.categoriasDatos.some((item) =>
-    SPECIAL_DATA_CATEGORIES.includes(item),
-  );
+  const hasSpecialCategories = hasSensitivePersonalData(form);
   const isLargeScale =
     form.volumenTitulares === "10001 a 100000" ||
     form.volumenTitulares === "100001 en adelante";
@@ -413,6 +443,12 @@ export function RatCreatePage() {
       value: selectedDependencia?.tipoProceso?.nombre ?? "Pendiente",
     },
   ];
+  const organizationLoadErrorMessage = isUnauthorizedApiError(dependenciasQuery.error)
+    ? "La sesion no esta autorizada para cargar la estructura organica. Cambie de usuario o vuelva a iniciar sesion antes de registrar una nueva actividad."
+    : "No fue posible cargar la estructura organica. Revise el backend antes de registrar una nueva actividad.";
+  const catalogsLoadErrorMessage = isUnauthorizedApiError(catalogosQuery.error)
+    ? "La sesion no esta autorizada para cargar las tablas maestras. Cambie de usuario o vuelva a iniciar sesion antes de continuar."
+    : "No fue posible cargar las tablas maestras. Revise el backend antes de continuar con el registro del tratamiento.";
 
   useEffect(() => {
     if (draftMode === "create") {
@@ -421,7 +457,32 @@ export function RatCreatePage() {
   }, [draftMode]);
 
   useEffect(() => {
-    if (!draftPayload || draftMode === "create" || form.dependenciaId || dependencias.length === 0) {
+    if (!restrictToAssignedDependency || !user?.dependenciaId) {
+      return;
+    }
+
+    const assignedDependenciaId = String(user.dependenciaId);
+
+    setForm((current) =>
+      current.dependenciaId === assignedDependenciaId
+        ? current
+        : {
+            ...current,
+            dependenciaId: assignedDependenciaId,
+            subdireccionId: "",
+            activoElectronico: "",
+          },
+    );
+  }, [restrictToAssignedDependency, user?.dependenciaId]);
+
+  useEffect(() => {
+    if (
+      restrictToAssignedDependency ||
+      !draftPayload ||
+      draftMode === "create" ||
+      form.dependenciaId ||
+      dependencias.length === 0
+    ) {
       return;
     }
 
@@ -441,7 +502,7 @@ export function RatCreatePage() {
           : { ...current, dependenciaId: String(matchedDependencia.id) },
       );
     }
-  }, [dependencias, draftMode, draftPayload, form.dependenciaId]);
+  }, [dependencias, draftMode, draftPayload, form.dependenciaId, restrictToAssignedDependency]);
 
   useEffect(() => {
     if (
@@ -563,10 +624,46 @@ export function RatCreatePage() {
     navigate("/actividades");
   }
 
+  function handleToggleTitular(value: string) {
+    setForm((current) => {
+      const nextTitulares = toggleValue(current.titulares, value);
+      const nextDetail = { ...current.datosPersonalesDetalle };
+
+      if (!nextTitulares.includes(value)) {
+        delete nextDetail[value];
+      }
+
+      return {
+        ...current,
+        titulares: nextTitulares,
+        datosPersonalesDetalle: nextDetail,
+        categoriasDatos: getSelectedPersonalDataCategoryNames({
+          ...current,
+          titulares: nextTitulares,
+          datosPersonalesDetalle: nextDetail,
+        }),
+      };
+    });
+  }
+
+  function handleTogglePersonalDataField(titular: string, domainId: string, field: string) {
+    setForm((current) => syncPersonalDataDetail(current, titular, domainId, field));
+  }
+
+  function handlePersonalDataJustification(
+    titular: string,
+    domainId: string,
+    justification: string,
+  ) {
+    setForm((current) =>
+      syncPersonalDataDetail(current, titular, domainId, undefined, justification),
+    );
+  }
+
   return (
     <section className="wizard-experience">
-      <header className="page-header page-header-inline wizard-page-header">
-        <div>
+      <header className="panel wizard-page-header">
+        <div className="wizard-title-block">
           <span className="brand-kicker">Actividades de tratamiento</span>
           <h2>
             {draftMode === "edit"
@@ -575,21 +672,34 @@ export function RatCreatePage() {
                 ? "Duplicar tratamiento"
                 : "Nuevo tratamiento"}
           </h2>
-          {draftPayload ? (
-            <p className="permission-hint">
-              Fuente cargada: <strong>{draftPayload.sourceLabel}</strong>
-            </p>
-          ) : null}
+          <div className="wizard-context-row">
+            <span>
+              Codigo <strong>{generatedCode}</strong>
+            </span>
+            <span>
+              Alcance{" "}
+              <strong>
+                {restrictToAssignedDependency
+                  ? formatDependencyScope(assignedDependencyScope)
+                  : "Institucional transversal"}
+              </strong>
+            </span>
+            {draftPayload ? (
+              <span>
+                Fuente <strong>{draftPayload.sourceLabel}</strong>
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="wizard-toolbar">
           <Link to="/actividades" className="button-secondary">
-            Volver a actividades
+            Volver
           </Link>
           <span className={`status-pill status-pill-${normalizeStatusToken(nextLifecycleStatus)}`}>
-            {nextLifecycleStatus === "En revision" ? "EN REVISION" : "BORRADOR"}
+            {nextLifecycleStatus === "En revision" ? "En revision" : "Borrador"}
           </span>
-          <button type="button" className="button-secondary" onClick={handleSaveDraft}>
+          <button type="button" className="button-primary" onClick={handleSaveDraft}>
             {getSaveDraftLabel(draftMode, nextLifecycleStatus)}
           </button>
         </div>
@@ -597,7 +707,10 @@ export function RatCreatePage() {
 
       <section className="panel wizard-overview">
         <div className="wizard-overview-row">
-          <span className="wizard-overview-label">Progreso del registro</span>
+          <div>
+            <span className="wizard-overview-label">Progreso del registro</span>
+            <p>Complete los campos requeridos por etapa antes de enviar a revision.</p>
+          </div>
           <strong className="wizard-progress-value">{progress}%</strong>
         </div>
 
@@ -627,6 +740,7 @@ export function RatCreatePage() {
           {RAT_FORM_STEPS.map((item, index) => {
             const itemProgress = stepProgress[index];
             const stepStatus = getStepStatus(index, activeStep, itemProgress);
+            const stepStatusLabel = getStepStatusLabel(stepStatus);
 
             return (
               <button
@@ -638,6 +752,7 @@ export function RatCreatePage() {
                 <span className="wizard-step-index">{index + 1}</span>
                 <span className="wizard-step-copy">
                   <strong>{item.title}</strong>
+                  <small>{stepStatusLabel}</small>
                 </span>
               </button>
             );
@@ -649,21 +764,28 @@ export function RatCreatePage() {
             <div className="wizard-stage-header">
               <div>
                 <h3>{currentStep.title}</h3>
+                <p>{currentStep.help}</p>
+              </div>
+              <div className="wizard-stage-badges">
+                <span className={`status-pill status-pill-${normalizeWizardStepStatus(getStepStatus(activeStep, activeStep, currentStepProgress))}`}>
+                  {getStepStatusLabel(getStepStatus(activeStep, activeStep, currentStepProgress))}
+                </span>
+                {currentStepProgress.total > 0 ? (
+                  <span className="pill pill-muted">
+                    {currentStepProgress.completed}/{currentStepProgress.total} requeridos
+                  </span>
+                ) : (
+                  <span className="pill pill-muted">Sin obligatorios</span>
+                )}
               </div>
             </div>
 
             {dependenciasQuery.isError ? (
-              <div className="error-box">
-                No fue posible cargar la estructura organica. Revise el backend
-                antes de registrar una nueva actividad.
-              </div>
+              <div className="error-box">{organizationLoadErrorMessage}</div>
             ) : null}
 
             {catalogosQuery.isError ? (
-              <div className="error-box">
-                No fue posible cargar las tablas maestras. Revise el backend
-                antes de continuar con el registro del tratamiento.
-              </div>
+              <div className="error-box">{catalogsLoadErrorMessage}</div>
             ) : null}
 
             {activeStep === 0 ? (
@@ -685,7 +807,7 @@ export function RatCreatePage() {
                         }
                         searchPlaceholder="Busque por nombre, sigla o tipo de proceso"
                         emptyMessage="No hay dependencias que coincidan con la busqueda."
-                        disabled={dependenciasQuery.isLoading}
+                        disabled={dependenciasQuery.isLoading || restrictToAssignedDependency}
                         onChange={(value) =>
                           setForm((current) => ({
                             ...current,
@@ -840,60 +962,149 @@ export function RatCreatePage() {
             {activeStep === 2 ? (
               <div className="wizard-section-stack">
                 <SectionCard
-                  title="Titulares involucrados"
-                  description="Marca unicamente los grupos de personas cuyos datos son tratados en esta actividad."
+                  title="Titulares y datos personales"
+                  description="Seleccione los titulares y documente sus datos personales en una sola vista. Las categorias sugeridas se abren para reducir clics."
                 >
-                  <ChoiceGroup
-                    options={titularesOptions}
-                    selected={form.titulares}
-                    onToggle={(value) =>
-                      setForm((current) => ({
-                        ...current,
-                        titulares: toggleValue(current.titulares, value),
-                      }))
-                    }
-                  />
+                  <div className="personal-data-workbench">
+                    <div className="personal-data-picker">
+                      <div className="personal-data-picker-header">
+                        <span className="brand-kicker">Titulares</span>
+                        <p>Marque los grupos de personas cuyos datos intervienen en la actividad.</p>
+                      </div>
+
+                      <ChoiceGroup
+                        options={titularesOptions}
+                        selected={form.titulares}
+                        onToggle={handleToggleTitular}
+                        compact
+                      />
+                    </div>
+
+                    <div className="personal-data-detail-area">
+                      <div className="personal-data-selection-summary" aria-live="polite">
+                        <span>{form.titulares.length} titulares</span>
+                        <span>{selectedPersonalDataCategories.length} categorias</span>
+                        <span>{selectedPersonalDataFields} campos</span>
+                      </div>
+
+                      {form.titulares.length === 0 ? (
+                        <div className="empty-state-card">
+                          Seleccione al menos un titular para habilitar el detalle de datos
+                          personales.
+                        </div>
+                      ) : (
+                        <div className="personal-data-detail-stack">
+                          {form.titulares.map((titular) => {
+                            const domainIds = getDomainIdsForTitular(titular);
+                            const domains = getOrderedPersonalDataDomains(domainIds, dataCategoryOptions);
+
+                            return (
+                              <article key={titular} className="personal-data-titular-panel">
+                                <header className="personal-data-titular-header">
+                                  <div>
+                                    <span className="brand-kicker">Titular</span>
+                                    <h4>{titular}</h4>
+                                  </div>
+                                  <span className="status-pill status-pill-borrador">
+                                    {getTitularSelectedFieldCount(form, titular)} campos
+                                  </span>
+                                </header>
+
+                                <div className="personal-data-domain-grid">
+                                  {domains.map((domain, domainIndex) => {
+                                    const selection =
+                                      form.datosPersonalesDetalle[titular]?.[domain.id] ?? {
+                                        fields: [],
+                                        justification: "",
+                                      };
+                                    const isSelected =
+                                      selection.fields.length > 0 ||
+                                      selection.justification.trim().length > 0;
+                                    const isRecommendedOpen = domainIndex < 2;
+
+                                    return (
+                                      <details
+                                        key={`${titular}-${domain.id}`}
+                                        className={
+                                          isSelected
+                                            ? "personal-data-domain-card personal-data-domain-card-selected"
+                                            : "personal-data-domain-card"
+                                        }
+                                        open={isSelected || isRecommendedOpen}
+                                      >
+                                        <summary>
+                                          <span>
+                                            <strong>{domain.name}</strong>
+                                            <small>{domain.description}</small>
+                                          </span>
+                                          {domain.sensitive ? (
+                                            <em className="status-pill status-pill-alto">Sensible</em>
+                                          ) : null}
+                                        </summary>
+
+                                        <div className="personal-data-field-grid">
+                                          {domain.fields.map((field) => (
+                                            <label key={field} className="personal-data-field-chip">
+                                              <input
+                                                type="checkbox"
+                                                checked={selection.fields.includes(field)}
+                                                onChange={() =>
+                                                  handleTogglePersonalDataField(titular, domain.id, field)
+                                                }
+                                              />
+                                              <span>{field}</span>
+                                            </label>
+                                          ))}
+                                        </div>
+
+                                        <label className="field full-width personal-data-justification">
+                                          <span>Justificacion</span>
+                                          <textarea
+                                            className="input textarea"
+                                            rows={3}
+                                            placeholder="Explique por que esta categoria es necesaria para la finalidad declarada."
+                                            value={selection.justification}
+                                            onChange={(event) =>
+                                              handlePersonalDataJustification(
+                                                titular,
+                                                domain.id,
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                        </label>
+                                      </details>
+                                    );
+                                  })}
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <label className="field full-width personal-data-notes">
+                        <span>Observaciones generales</span>
+                        <textarea
+                          className="input textarea"
+                          rows={4}
+                          placeholder="Agregue excepciones, criterios de minimizacion o notas para Riesgos y EIPD."
+                          value={form.descripcionDatos}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              descripcionDatos: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </SectionCard>
               </div>
             ) : null}
 
             {activeStep === 3 ? (
-              <div className="wizard-section-stack">
-                <SectionCard
-                  title="Categorias de datos personales"
-                  description="Selecciona las categorias tratadas y luego detalla los campos mas relevantes."
-                >
-                  <ChoiceGroup
-                    options={dataCategoryOptions}
-                    selected={form.categoriasDatos}
-                    onToggle={(value) =>
-                      setForm((current) => ({
-                        ...current,
-                        categoriasDatos: toggleValue(current.categoriasDatos, value),
-                      }))
-                    }
-                  />
-
-                  <label className="field full-width">
-                    <span>Descripcion de datos personales</span>
-                    <textarea
-                      className="input textarea"
-                      rows={6}
-                      placeholder="Ej. Nombres, apellidos, NUI, correo institucional, historia laboral."
-                      value={form.descripcionDatos}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          descripcionDatos: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                </SectionCard>
-              </div>
-            ) : null}
-
-            {activeStep === 4 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Origen y escala del tratamiento"
@@ -1025,7 +1236,7 @@ export function RatCreatePage() {
               </div>
             ) : null}
 
-            {activeStep === 5 ? (
+            {activeStep === 4 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Relacion con terceros"
@@ -1152,7 +1363,7 @@ export function RatCreatePage() {
               </div>
             ) : null}
 
-            {activeStep === 6 ? (
+            {activeStep === 5 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Conservacion y fechas de control"
@@ -1208,7 +1419,7 @@ export function RatCreatePage() {
               </div>
             ) : null}
 
-            {activeStep === 7 ? (
+            {activeStep === 6 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Controles generales"
@@ -1276,7 +1487,7 @@ export function RatCreatePage() {
               </div>
             ) : null}
 
-            {activeStep === 8 ? (
+            {activeStep === 7 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Activos asociados"
@@ -1365,7 +1576,7 @@ export function RatCreatePage() {
               </div>
             ) : null}
 
-            {activeStep === 9 ? (
+            {activeStep === 8 ? (
               <div className="wizard-section-stack">
                 <SectionCard
                   title="Lectura automatica preliminar"
@@ -1420,18 +1631,18 @@ export function RatCreatePage() {
           </section>
 
           <div className="wizard-action-bar">
-            <div className="wizard-footer-actions">
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={() => {
-                  clearTreatmentDraft();
-                  navigate("/actividades");
-                }}
-              >
-                Cancelar
-              </button>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => {
+                clearTreatmentDraft();
+                navigate("/actividades");
+              }}
+            >
+              Cancelar
+            </button>
 
+            <div className="wizard-footer-actions">
               <button
                 type="button"
                 className="button-secondary"
@@ -1451,6 +1662,10 @@ export function RatCreatePage() {
                 Siguiente
               </button>
             </div>
+
+            <button type="button" className="button-primary" onClick={handleSaveDraft}>
+              {getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+            </button>
           </div>
         </div>
       </div>
@@ -1459,26 +1674,40 @@ export function RatCreatePage() {
 }
 
 function SectionCard({
+  title,
+  description,
   children,
 }: {
   title?: string;
   description?: string;
   children: ReactNode;
 }) {
-  return <section className="section-card">{children}</section>;
+  return (
+    <section className="section-card">
+      {title || description ? (
+        <header className="section-card-header">
+          {title ? <h3>{title}</h3> : null}
+          {description ? <p>{description}</p> : null}
+        </header>
+      ) : null}
+      {children}
+    </section>
+  );
 }
 
 function ChoiceGroup({
   options,
   selected,
   onToggle,
+  compact = false,
 }: {
   options: string[];
   selected: string[];
   onToggle: (value: string) => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="choice-grid">
+    <div className={compact ? "choice-grid choice-grid-compact" : "choice-grid"}>
       {options.map((item) => {
         const isSelected = selected.includes(item);
 
@@ -1502,6 +1731,174 @@ function toggleValue(items: string[], value: string) {
     : [...items, value];
 }
 
+function syncPersonalDataDetail(
+  current: RatDraftForm,
+  titular: string,
+  domainId: string,
+  field?: string,
+  justification?: string,
+): RatDraftForm {
+  const titularDetail = current.datosPersonalesDetalle[titular] ?? {};
+  const domainSelection = titularDetail[domainId] ?? { fields: [], justification: "" };
+  const nextFields =
+    field === undefined ? domainSelection.fields : toggleValue(domainSelection.fields, field);
+  const nextJustification =
+    justification === undefined ? domainSelection.justification : justification;
+  const nextTitularDetail = {
+    ...titularDetail,
+    [domainId]: {
+      fields: nextFields,
+      justification: nextJustification,
+    },
+  };
+
+  if (nextFields.length === 0 && nextJustification.trim().length === 0) {
+    delete nextTitularDetail[domainId];
+  }
+
+  const nextDetail = {
+    ...current.datosPersonalesDetalle,
+    [titular]: nextTitularDetail,
+  };
+
+  if (Object.keys(nextTitularDetail).length === 0) {
+    delete nextDetail[titular];
+  }
+
+  const nextForm = {
+    ...current,
+    datosPersonalesDetalle: nextDetail,
+  };
+
+  return {
+    ...nextForm,
+    categoriasDatos: getSelectedPersonalDataCategoryNames(nextForm),
+  };
+}
+
+function hasPersonalDataDetail(form: RatDraftForm) {
+  return getSelectedPersonalDataFieldCount(form) > 0;
+}
+
+function getSelectedPersonalDataCategoryNames(form: RatDraftForm) {
+  const names = new Set<string>();
+
+  for (const titular of form.titulares) {
+    const detail = form.datosPersonalesDetalle[titular] ?? {};
+
+    for (const [domainId, selection] of Object.entries(detail)) {
+      if (selection.fields.length === 0 && selection.justification.trim().length === 0) {
+        continue;
+      }
+
+      const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+      names.add(domain?.name ?? domainId);
+    }
+  }
+
+  if (names.size === 0) {
+    for (const item of form.categoriasDatos) {
+      names.add(item);
+    }
+  }
+
+  return [...names];
+}
+
+function getSelectedPersonalDataFieldCount(form: RatDraftForm) {
+  return form.titulares.reduce((total, titular) => total + getTitularSelectedFieldCount(form, titular), 0);
+}
+
+function getTitularSelectedFieldCount(form: RatDraftForm, titular: string) {
+  const detail = form.datosPersonalesDetalle[titular] ?? {};
+
+  return Object.values(detail).reduce(
+    (total, selection) => total + selection.fields.length,
+    0,
+  );
+}
+
+function getOrderedPersonalDataDomains(domainIds: string[], catalogCategoryNames: string[]) {
+  const recommendedDomains = PERSONAL_DATA_DOMAINS.filter((domain) => domainIds.includes(domain.id));
+
+  if (recommendedDomains.length > 0) {
+    return recommendedDomains;
+  }
+
+  return catalogCategoryNames
+    .map((name) => PERSONAL_DATA_DOMAINS.find((domain) => normalizeOrgKey(domain.name) === normalizeOrgKey(name)))
+    .filter((domain): domain is (typeof PERSONAL_DATA_DOMAINS)[number] => Boolean(domain));
+}
+
+function getDomainIdsForTitular(titular: string) {
+  const normalizedTitular = normalizeOrgKey(titular);
+  const relationshipKey = Object.keys(PERSONAL_DATA_TITULAR_RELATIONSHIPS).find((key) =>
+    normalizedTitular.includes(key),
+  );
+
+  return relationshipKey
+    ? PERSONAL_DATA_TITULAR_RELATIONSHIPS[relationshipKey]
+    : ["identificacion", "contacto"];
+}
+
+function hasSensitivePersonalData(form: RatDraftForm) {
+  const selectedCategories = getSelectedPersonalDataCategoryNames(form);
+
+  if (selectedCategories.some((item) => SPECIAL_DATA_CATEGORIES.includes(item))) {
+    return true;
+  }
+
+  return Object.values(form.datosPersonalesDetalle).some((detail) =>
+    Object.keys(detail).some((domainId) =>
+      PERSONAL_DATA_DOMAINS.some((domain) => domain.id === domainId && domain.sensitive),
+    ),
+  );
+}
+
+function hasChildPersonalData(form: RatDraftForm) {
+  return Object.values(form.datosPersonalesDetalle).some((detail) =>
+    Object.keys(detail).some((domainId) =>
+      PERSONAL_DATA_DOMAINS.some((domain) => domain.id === domainId && domain.childRelated),
+    ),
+  );
+}
+
+function buildSensitivePersonalDataSummary(form: RatDraftForm) {
+  const values = new Set<string>();
+
+  for (const detail of Object.values(form.datosPersonalesDetalle)) {
+    for (const domainId of Object.keys(detail)) {
+      const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+
+      if (domain?.sensitive) {
+        values.add(domain.name);
+      }
+    }
+  }
+
+  return values.size > 0 ? formatListValue([...values]) : form.descripcionDatos.trim();
+}
+
+function buildPersonalDataRecords(form: RatDraftForm) {
+  return form.titulares.flatMap((titular) => {
+    const detail = form.datosPersonalesDetalle[titular] ?? {};
+
+    return Object.entries(detail)
+      .filter(([, selection]) => selection.fields.length > 0 || selection.justification.trim().length > 0)
+      .map(([domainId, selection]) => {
+        const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+
+        return {
+          titular,
+          categoria: domain?.name ?? domainId,
+          campos: selection.fields,
+          justificacion: selection.justification.trim(),
+          sensible: Boolean(domain?.sensitive),
+        };
+      });
+  });
+}
+
 function buildRatCode(sigla: string | null) {
   const year = new Date().getFullYear();
   const normalizedSigla = sigla?.trim().length ? sigla.trim().toUpperCase() : "PENDIENTE";
@@ -1509,8 +1906,17 @@ function buildRatCode(sigla: string | null) {
   return `RAT-${normalizedSigla}-${year}`;
 }
 
+function isUnauthorizedApiError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    (error as { response?: { status?: number } }).response?.status === 401
+  );
+}
+
 function coerceDraftValues(
-  values: Record<string, string | string[]>,
+  values: Partial<RatDraftForm>,
 ): Partial<RatDraftForm> {
   return values as Partial<RatDraftForm>;
 }
@@ -1525,9 +1931,13 @@ function getStepProgress(
   };
 }
 
-function getStepStatus(index: number, activeStep: number, progress: StepProgress) {
+function getStepStatus(index: number, activeStep: number, progress?: StepProgress) {
   if (index === activeStep) {
     return "active";
+  }
+
+  if (!progress) {
+    return "pending";
   }
 
   if (progress.total > 0 && progress.completed === progress.total) {
@@ -1539,6 +1949,32 @@ function getStepStatus(index: number, activeStep: number, progress: StepProgress
   }
 
   return "pending";
+}
+
+function getStepStatusLabel(status: string) {
+  switch (status) {
+    case "active":
+      return "En progreso";
+    case "done":
+      return "Completo";
+    case "partial":
+      return "Avance parcial";
+    default:
+      return "Pendiente";
+  }
+}
+
+function normalizeWizardStepStatus(status: string) {
+  switch (status) {
+    case "active":
+      return "en-revision";
+    case "done":
+      return "vigente";
+    case "partial":
+      return "consulta-previa";
+    default:
+      return "borrador";
+  }
 }
 
 function formatOrgLabel(nombre: string, sigla?: string | null) {
@@ -1699,9 +2135,10 @@ function buildRatRecordFromForm({
     baseLicitud: form.baseLegal || "Pendiente de documentar",
     normaAplicable: form.descripcionBaseLegal.trim() || "Pendiente de documentar",
     titulares: formatListValue(form.titulares),
-    categoriasDatos: formatListValue(form.categoriasDatos),
-    datosSensibles: form.descripcionDatos.trim() || "Pendiente de documentar",
-    datosNna: "Pendiente de documentar",
+    categoriasDatos: formatListValue(getSelectedPersonalDataCategoryNames(form)),
+    datosSensibles:
+      buildSensitivePersonalDataSummary(form) || "No se identifican datos sensibles",
+    datosNna: hasChildPersonalData(form) ? "Si" : "No",
     origenDatos: form.procedenciaDatos || "Pendiente de documentar",
     mediosRecoleccion: "Pendiente de documentar",
     accionesTratamiento: formatListValue(form.accionesTratamiento),
@@ -1742,6 +2179,7 @@ function buildRatRecordFromForm({
     observaciones: buildObservations(form, selectedElectronicAsset),
     pendientes: buildPendingItems(form, nextStatus, eipdRecommended),
     report: activityReport,
+    datosPersonalesDetalle: buildPersonalDataRecords(form),
   };
 
   return {

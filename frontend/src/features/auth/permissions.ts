@@ -168,7 +168,6 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
         },
         assets: {
           ...NO_CRUD,
-          archive: true,
           detail: true,
         },
         activities: {
@@ -217,6 +216,8 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
         },
         assets: {
           ...NO_CRUD,
+          update: true,
+          archive: true,
           detail: true,
         },
         activities: {
@@ -263,6 +264,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
         },
         assets: {
           ...NO_CRUD,
+          update: true,
           archive: true,
           detail: true,
         },
@@ -313,9 +315,9 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
         assets: {
           create: true,
           read: true,
-          update: true,
+          update: false,
           duplicate: false,
-          archive: true,
+          archive: false,
           approve: false,
           detail: true,
         },

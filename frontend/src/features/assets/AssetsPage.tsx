@@ -5,6 +5,11 @@ import { AppIcon } from "../../components/AppIcon";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
 import { apiClient } from "../../services/api-client";
+import {
+  formatDependencyScope,
+  getAssignedDependencyScope,
+  shouldRestrictToAssignedDependency,
+} from "../auth/dependency-scope";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import {
@@ -143,6 +148,25 @@ type AssetCatalogOption = {
   codigo: string;
 };
 
+type AssetFeedback = {
+  type: "success" | "error";
+  message: string;
+};
+
+type AssetDependencyDistribution = {
+  dependencyName: string;
+  dependencyShortName: string;
+  total: number;
+  active: number;
+  inactive: number;
+  highImpact: number;
+  catastrophic: number;
+  share: number;
+  relativeWidth: number;
+};
+
+const UNASSIGNED_DEPENDENCY_LABEL = "Sin dependencia asignada";
+
 const INITIAL_ASSET_DRAFT: AssetDraft = {
   codigo: "",
   nombre: "",
@@ -181,6 +205,7 @@ export function AssetsPage() {
   const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
+  const restrictToAssignedDependency = shouldRestrictToAssignedDependency(user);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [dependenciaFilter, setDependenciaFilter] = useState(
@@ -195,6 +220,29 @@ export function AssetsPage() {
   );
   const [activeAssetId, setActiveAssetId] = useState<number | "new" | null>(null);
   const [draftAsset, setDraftAsset] = useState<AssetDraft | null>(null);
+  const [pendingSaveDraft, setPendingSaveDraft] = useState<AssetDraft | null>(null);
+  const [assetFeedback, setAssetFeedback] = useState<AssetFeedback | null>(null);
+  const [showAllDependencyDistribution, setShowAllDependencyDistribution] =
+    useState(false);
+  const scopedInitialAssetDraft = useMemo(
+    () => ({
+      ...INITIAL_ASSET_DRAFT,
+      dependenciaId:
+        restrictToAssignedDependency && user?.dependenciaId
+          ? String(user.dependenciaId)
+          : "",
+    }),
+    [restrictToAssignedDependency, user?.dependenciaId],
+  );
+
+  useEffect(() => {
+    if (!assetFeedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setAssetFeedback(null), 5200);
+    return () => window.clearTimeout(timer);
+  }, [assetFeedback]);
 
   const assetsQuery = useQuery({
     queryKey: ["activos", "list"],
@@ -248,10 +296,20 @@ export function AssetsPage() {
       const response = await apiClient.post<AssetMutationResponse>("/activos", payload);
       return response.data.data;
     },
-    onSuccess: async () => {
+    onSuccess: async (_savedAsset, draft) => {
       await queryClient.invalidateQueries({ queryKey: ["activos"] });
+      setAssetFeedback({
+        type: "success",
+        message: draft.id ? "Registro editado con exito." : "Registro guardado con exito.",
+      });
       setActiveAssetId(null);
       setDraftAsset(null);
+    },
+    onError: (error) => {
+      setAssetFeedback({
+        type: "error",
+        message: getAssetMutationErrorMessage(error),
+      });
     },
   });
 
@@ -268,6 +326,10 @@ export function AssetsPage() {
 
   const entries = assetsQuery.data ?? [];
   const dependencias = dependenciasQuery.data ?? [];
+  const assignedDependencyScope = getAssignedDependencyScope(user, dependencias);
+  const scopedDependencias = restrictToAssignedDependency
+    ? dependencias.filter((item) => item.id === user?.dependenciaId)
+    : dependencias;
   const catalogEntries = catalogosQuery.data ?? [];
   const tipoOptions = useMemo(
     () => getCatalogOptionsByType(catalogEntries, CATALOG_TYPE_KEYS.TIPO_ACTIVO),
@@ -386,7 +448,7 @@ export function AssetsPage() {
 
   useEffect(() => {
     if (activeAssetId === "new") {
-      setDraftAsset(INITIAL_ASSET_DRAFT);
+      setDraftAsset(scopedInitialAssetDraft);
       return;
     }
 
@@ -395,7 +457,7 @@ export function AssetsPage() {
     }
 
     setDraftAsset(mapAssetDetailToDraft(detailQuery.data));
-  }, [activeAssetId, detailQuery.data]);
+  }, [activeAssetId, detailQuery.data, scopedInitialAssetDraft]);
 
   const dependencyOptions = useMemo(
     () =>
@@ -422,6 +484,10 @@ export function AssetsPage() {
       MAYOR: entries.filter((entry) => getAssetImpactKey(entry) === "MAYOR").length,
       CATASTROFICO: entries.filter((entry) => getAssetImpactKey(entry) === "CATASTROFICO").length,
     }),
+    [entries],
+  );
+  const dependencyDistribution = useMemo(
+    () => buildDependencyDistribution(entries),
     [entries],
   );
   const typeFilterOptions = useMemo(
@@ -478,6 +544,13 @@ export function AssetsPage() {
 
   return (
     <section className="catalogs-page assets-page">
+      {assetFeedback ? (
+        <AssetFeedbackToast
+          feedback={assetFeedback}
+          onDismiss={() => setAssetFeedback(null)}
+        />
+      ) : null}
+
       <header className="page-header page-header-inline">
         <div>
           <span className="brand-kicker">Inventario de informacion</span>
@@ -494,6 +567,9 @@ export function AssetsPage() {
           <p className="permission-hint">
             Rol actual: <strong>{roleCapabilities.label}</strong>. Los activos se administran con
             baja logica y trazabilidad sobre cambios clave.
+            {restrictToAssignedDependency
+              ? ` Alcance: ${formatDependencyScope(assignedDependencyScope)}.`
+              : " Alcance: institucional transversal."}
           </p>
         </div>
 
@@ -507,7 +583,7 @@ export function AssetsPage() {
               className="button-primary"
               onClick={() => {
                 setActiveAssetId("new");
-                setDraftAsset(INITIAL_ASSET_DRAFT);
+                setDraftAsset(scopedInitialAssetDraft);
               }}
             >
               Nuevo activo
@@ -517,6 +593,25 @@ export function AssetsPage() {
       </header>
 
       <ExecutiveKpiGrid items={stats} />
+
+      {!restrictToAssignedDependency ? (
+        <AssetDependencyDistributionPanel
+          distribution={dependencyDistribution}
+          isExpanded={showAllDependencyDistribution}
+          onSelectDependency={(dependencyName) => {
+            if (dependencyName === UNASSIGNED_DEPENDENCY_LABEL) {
+              return;
+            }
+
+            setSearch("");
+            setDependenciaFilter(dependencyName);
+          }}
+          onToggleExpanded={() =>
+            setShowAllDependencyDistribution((current) => !current)
+          }
+          totalAssets={entries.length}
+        />
+      ) : null}
 
       <div className="org-toolbar panel">
         <label className="field">
@@ -702,11 +797,16 @@ export function AssetsPage() {
       {activeAssetId !== null ? (
         <AssetManagementModal
           canArchive={roleCapabilities.assets.archive}
-          canSave={roleCapabilities.assets.update || roleCapabilities.assets.create}
+          canSave={
+            activeAssetId === "new"
+              ? roleCapabilities.assets.create
+              : roleCapabilities.assets.update
+          }
           catalogEntries={catalogEntries}
-          dependencias={dependencias}
+          dependencias={scopedDependencias}
           draft={draftAsset}
           impactoPreview={activeAssetPreview}
+          isDependencyLocked={restrictToAssignedDependency}
           isCreating={activeAssetId === "new"}
           isDeleting={deleteAssetMutation.isPending}
           isLoadingDetail={detailQuery.isLoading && typeof activeAssetId === "number"}
@@ -723,7 +823,7 @@ export function AssetsPage() {
           }}
           onSave={() => {
             if (draftAsset) {
-              saveAssetMutation.mutate(draftAsset);
+              setPendingSaveDraft(draftAsset);
             }
           }}
           options={{
@@ -737,6 +837,247 @@ export function AssetsPage() {
           }}
         />
       ) : null}
+
+      {pendingSaveDraft ? (
+        <ConfirmAssetSaveModal
+          isEditing={Boolean(pendingSaveDraft.id)}
+          isSaving={saveAssetMutation.isPending}
+          onCancel={() => setPendingSaveDraft(null)}
+          onConfirm={() => {
+            const draftToSave = pendingSaveDraft;
+            saveAssetMutation.mutate(draftToSave, {
+              onSettled: () => setPendingSaveDraft(null),
+            });
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function AssetFeedbackToast({
+  feedback,
+  onDismiss,
+}: {
+  feedback: AssetFeedback;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className={`feedback-toast feedback-toast-${feedback.type}`}
+      role={feedback.type === "error" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      <span>{feedback.message}</span>
+      <button type="button" aria-label="Cerrar mensaje" onClick={onDismiss}>
+        Cerrar
+      </button>
+    </div>
+  );
+}
+
+function ConfirmAssetSaveModal({
+  isEditing,
+  isSaving,
+  onCancel,
+  onConfirm,
+}: {
+  isEditing: boolean;
+  isSaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="report-preview-modal confirm-modal" role="dialog" aria-modal="true">
+      <button
+        type="button"
+        className="report-preview-modal-backdrop"
+        aria-label="Cancelar confirmacion"
+        disabled={isSaving}
+        onClick={onCancel}
+      />
+
+      <div className="report-preview-modal-dialog confirm-modal-dialog">
+        <div className="confirm-modal-body">
+          <span className="brand-kicker">Confirmacion requerida</span>
+          <h3>{isEditing ? "Guardar cambios" : "Guardar registro"}</h3>
+          <p>Esta seguro de guardar el registro?</p>
+          <div className="confirm-modal-actions">
+            <button
+              type="button"
+              className="button-table-action button-table-action-secondary"
+              disabled={isSaving}
+              title="Cancelar y volver al formulario."
+              onClick={onCancel}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="button-table-action button-table-action-primary"
+              disabled={isSaving}
+              title="Confirmar guardado del registro."
+              onClick={onConfirm}
+            >
+              {isSaving ? "Guardando..." : "Si, guardar"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getAssetMutationErrorMessage(error: unknown) {
+  const fallback = "Error, no se pudo guardar/editar el registro.";
+  const apiError = error as {
+    response?: { data?: { message?: string | string[] } };
+  };
+  const message = apiError.response?.data?.message;
+
+  if (Array.isArray(message) && message.length > 0) {
+    return `${fallback} ${message.join(" ")}`;
+  }
+
+  if (typeof message === "string" && message.trim()) {
+    return `${fallback} ${message.trim()}`;
+  }
+
+  return fallback;
+}
+
+function AssetDependencyDistributionPanel({
+  distribution,
+  isExpanded,
+  onSelectDependency,
+  onToggleExpanded,
+  totalAssets,
+}: {
+  distribution: AssetDependencyDistribution[];
+  isExpanded: boolean;
+  onSelectDependency: (dependencyName: string) => void;
+  onToggleExpanded: () => void;
+  totalAssets: number;
+}) {
+  const topDependencies = distribution.slice(0, 5);
+  const leader = topDependencies[0];
+  const tableRows = isExpanded ? distribution : [];
+
+  return (
+    <section className="panel asset-distribution-panel">
+      <div className="panel-heading panel-heading-compact">
+        <div>
+          <span className="brand-kicker">Distribucion por dependencia</span>
+          <h3>Top 5 dependencias con mas activos</h3>
+          <p className="asset-distribution-caption">
+            Sobre {totalAssets} activos visibles para el rol actual.
+          </p>
+        </div>
+        <span className="pill">{distribution.length} dependencias</span>
+      </div>
+
+      {distribution.length === 0 ? (
+        <p className="selection-action-empty">No hay activos para distribuir.</p>
+      ) : (
+        <>
+          <div className="asset-distribution-layout">
+            <div className="asset-top-dependencies" aria-label="Top de dependencias por activos">
+              {topDependencies.map((item) => (
+                <button
+                  key={item.dependencyName}
+                  type="button"
+                  className="asset-dependency-bar-row"
+                  title={
+                    item.dependencyName === UNASSIGNED_DEPENDENCY_LABEL
+                      ? "Registro sin dependencia asignada."
+                      : `Filtrar inventario por ${item.dependencyName}.`
+                  }
+                  onClick={() => onSelectDependency(item.dependencyName)}
+                >
+                  <span className="asset-dependency-bar-label">
+                    <strong>{item.dependencyShortName}</strong>
+                    <small>{item.dependencyName}</small>
+                  </span>
+                  <span className="asset-dependency-bar-track" aria-hidden="true">
+                    <span
+                      className="asset-dependency-bar-fill"
+                      style={{ width: `${item.relativeWidth}%` }}
+                    />
+                  </span>
+                  <span className="asset-dependency-bar-value">
+                    <strong>{item.total}</strong>
+                    <small>{formatDistributionPercent(item.share)}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <aside className="asset-distribution-insight">
+              <span className="brand-kicker">Lectura rapida</span>
+              <strong>{leader?.dependencyShortName ?? "Sin datos"}</strong>
+              <p>
+                {leader
+                  ? `${leader.total} activos registrados, ${leader.highImpact} con impacto mayor o catastrofico.`
+                  : "Sin activos visibles para el rol actual."}
+              </p>
+            </aside>
+          </div>
+
+          {distribution.length > 5 ? (
+            <div className="asset-distribution-actions">
+              <button
+                type="button"
+                className="button-table-action"
+                onClick={onToggleExpanded}
+              >
+                {isExpanded ? "Ocultar tabla completa" : "Ver tabla completa"}
+              </button>
+            </div>
+          ) : null}
+
+          {tableRows.length > 0 ? (
+            <TableScrollFrame className="asset-distribution-table-shell" maxHeight="320px">
+              <table className="registry-table asset-distribution-table">
+                <thead>
+                  <tr>
+                    <th>Dependencia</th>
+                    <th>Activos</th>
+                    <th>Participacion</th>
+                    <th>Activos vigentes</th>
+                    <th>Impacto alto</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((item) => (
+                    <tr key={item.dependencyName}>
+                      <td>
+                        <strong>{item.dependencyShortName}</strong>
+                        <div className="table-cell-secondary">{item.dependencyName}</div>
+                      </td>
+                      <td className="table-number">{item.total}</td>
+                      <td className="table-number">{formatDistributionPercent(item.share)}</td>
+                      <td className="table-number">{item.active}</td>
+                      <td className="table-number">{item.highImpact}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button-table-action"
+                          disabled={item.dependencyName === UNASSIGNED_DEPENDENCY_LABEL}
+                          title={`Filtrar inventario por ${item.dependencyName}.`}
+                          onClick={() => onSelectDependency(item.dependencyName)}
+                        >
+                          Filtrar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScrollFrame>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -748,6 +1089,7 @@ function AssetManagementModal({
   dependencias,
   draft,
   impactoPreview,
+  isDependencyLocked,
   isCreating,
   isDeleting,
   isLoadingDetail,
@@ -764,6 +1106,7 @@ function AssetManagementModal({
   dependencias: Dependencia[];
   draft: AssetDraft | null;
   impactoPreview: { valor: string; impacto: string; pillClass: string } | null;
+  isDependencyLocked: boolean;
   isCreating: boolean;
   isDeleting: boolean;
   isLoadingDetail: boolean;
@@ -786,6 +1129,11 @@ function AssetManagementModal({
     Boolean(draft?.codigo.trim()) &&
     Boolean(draft?.nombre.trim()) &&
     Boolean(draft?.tipoActivoId.trim());
+  const saveButtonHelp = !canSubmit
+    ? "Complete codigo, nombre y tipo de activo para guardar."
+    : isCreating
+      ? "Guardar nuevo activo de informacion."
+      : "Guardar cambios del activo de informacion.";
 
   return (
     <div className="report-preview-modal" role="dialog" aria-modal="true" aria-labelledby="asset-modal-title">
@@ -826,7 +1174,10 @@ function AssetManagementModal({
               </p>
             </section>
           ) : (
-            <div className="activity-action-modal-grid asset-modal-grid">
+            <fieldset
+              className="activity-action-modal-grid asset-modal-grid asset-modal-form-fieldset"
+              disabled={!canSave}
+            >
               <div className="detail-block">
                 <h4>Identificacion del activo</h4>
                 <div className="catalog-form-grid">
@@ -877,6 +1228,7 @@ function AssetManagementModal({
                     <select
                       className="input"
                       value={draft.dependenciaId}
+                      disabled={isDependencyLocked}
                       onChange={(event) => onChange({ ...draft, dependenciaId: event.target.value })}
                     >
                       <option value="">Seleccione la dependencia</option>
@@ -1266,8 +1618,10 @@ function AssetManagementModal({
                   {canSave ? (
                     <button
                       type="button"
-                      className="button-table-action"
+                      className="button-table-action button-table-action-primary"
                       disabled={!canSubmit || isSaving}
+                      title={saveButtonHelp}
+                      aria-label={saveButtonHelp}
                       onClick={onSave}
                     >
                       {isSaving ? "Guardando..." : "Guardar activo"}
@@ -1287,7 +1641,7 @@ function AssetManagementModal({
                   ))}
                 </div>
               </div>
-            </div>
+            </fieldset>
           )}
         </div>
       </div>
@@ -1477,6 +1831,74 @@ const IMPACT_ORDER: AssetImpactKey[] = [
   "MAYOR",
   "CATASTROFICO",
 ];
+
+function buildDependencyDistribution(entries: AssetSummary[]): AssetDependencyDistribution[] {
+  const groups = new Map<string, AssetDependencyDistribution>();
+
+  entries.forEach((entry) => {
+    const dependencyName = entry.dependencia?.trim() || UNASSIGNED_DEPENDENCY_LABEL;
+    const dependencyShortName =
+      entry.siglaDependencia?.trim() ||
+      getDependencyShortName(dependencyName);
+    const current =
+      groups.get(dependencyName) ??
+      {
+        dependencyName,
+        dependencyShortName,
+        total: 0,
+        active: 0,
+        inactive: 0,
+        highImpact: 0,
+        catastrophic: 0,
+        share: 0,
+        relativeWidth: 0,
+      };
+    const impact = getAssetImpactKey(entry);
+
+    current.total += 1;
+    current.active += entry.activo ? 1 : 0;
+    current.inactive += entry.activo ? 0 : 1;
+    current.highImpact += impact === "MAYOR" || impact === "CATASTROFICO" ? 1 : 0;
+    current.catastrophic += impact === "CATASTROFICO" ? 1 : 0;
+    groups.set(dependencyName, current);
+  });
+
+  const rows = Array.from(groups.values()).sort(
+    (left, right) =>
+      right.total - left.total ||
+      left.dependencyShortName.localeCompare(right.dependencyShortName),
+  );
+  const maxTotal = Math.max(...rows.map((item) => item.total), 0);
+  const totalAssets = entries.length;
+
+  return rows.map((item) => ({
+    ...item,
+    share: totalAssets > 0 ? (item.total / totalAssets) * 100 : 0,
+    relativeWidth: maxTotal > 0 ? Math.max(6, (item.total / maxTotal) * 100) : 0,
+  }));
+}
+
+function getDependencyShortName(dependencyName: string) {
+  if (dependencyName === UNASSIGNED_DEPENDENCY_LABEL) {
+    return "S/D";
+  }
+
+  return dependencyName
+    .split(/\s+/)
+    .filter((part) => part.length > 2)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 6)
+    .toUpperCase();
+}
+
+function formatDistributionPercent(value: number) {
+  if (value >= 10) {
+    return `${value.toFixed(0)}%`;
+  }
+
+  return `${value.toFixed(1)}%`;
+}
 
 function getImpactPillClass(entry: Pick<AssetSummary, "impacto" | "impactoCodigo">) {
   switch (getAssetImpactKey(entry)) {

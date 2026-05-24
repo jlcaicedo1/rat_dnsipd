@@ -102,6 +102,7 @@ export class ActividadesService {
   ) {
     this.authz.assertCanAuthorTreatment(actor);
     const rat = await this.ensureRat(ratId, actor);
+    assertActivityCodeMatchesDependency(dto.codigo, rat.dependencia.sigla);
     await this.ensureCodigoDisponible(ratId, dto.codigo);
 
     if (rat.estadoGeneral === 'ARCHIVADO') {
@@ -165,6 +166,8 @@ export class ActividadesService {
     const actividad = await this.ensureExists(id, actor);
 
     if (dto.codigo !== undefined && dto.codigo !== actividad.codigo) {
+      const rat = await this.ensureRat(actividad.ratId, actor);
+      assertActivityCodeMatchesDependency(dto.codigo, rat.dependencia.sigla);
       await this.ensureCodigoDisponible(actividad.ratId, dto.codigo, id);
     }
 
@@ -314,6 +317,9 @@ export class ActividadesService {
         id: ratId,
         ...(actor ? { AND: [this.authz.ratWhere(actor)] } : {}),
       },
+      include: {
+        dependencia: true,
+      },
     });
 
     if (!rat) {
@@ -366,4 +372,30 @@ function isActivityStatusOnlyUpdate(dto: UpdateActividadDto) {
     dto.nombre === undefined &&
     dto.descripcion === undefined
   );
+}
+
+function assertActivityCodeMatchesDependency(
+  codigo: string,
+  dependenciaSigla?: string | null,
+) {
+  const sigla = normalizeCodeToken(dependenciaSigla);
+
+  if (!sigla) {
+    throw new UnprocessableEntityException(
+      'La dependencia del RAT no tiene sigla para generar el codigo de actividad.',
+    );
+  }
+
+  const normalizedCode = normalizeCodeToken(codigo);
+  const expectedPrefix = `ACT-${sigla}-`;
+
+  if (!normalizedCode.startsWith(expectedPrefix)) {
+    throw new UnprocessableEntityException(
+      `El codigo de actividad debe iniciar con ${expectedPrefix} para la dependencia asignada.`,
+    );
+  }
+}
+
+function normalizeCodeToken(value?: string | null) {
+  return (value ?? '').trim().toUpperCase();
 }

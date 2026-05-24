@@ -168,20 +168,27 @@ export class ActivosService {
 
   async create(dto: CreateActivoDto, actor?: AuthenticatedUser) {
     this.authz.assertCanAuthorAssets(actor);
-    this.authz.assertCanUseDependencia(actor, dto.dependenciaId);
-    await this.ensureCodigoDisponible(dto.codigo);
+    const scopedDto = {
+      ...dto,
+      dependenciaId: this.authz.resolveDependenciaIdForWrite(
+        actor,
+        dto.dependenciaId,
+        { fallbackToActor: true },
+      ),
+    };
+    await this.ensureCodigoDisponible(scopedDto.codigo);
 
     const data = await this.prisma.$transaction(async (tx) => {
-      await this.assertDependencies(tx, dto, undefined, actor);
-      const calculated = await this.resolveCalculatedFields(tx, dto);
+      await this.assertDependencies(tx, scopedDto, undefined, actor);
+      const calculated = await this.resolveCalculatedFields(tx, scopedDto);
 
       const created = await tx.activoInformacion.create({
         data: {
-          ...this.buildCreateData(dto),
+          ...this.buildCreateData(scopedDto),
           valorActivo: calculated.valorActivo,
           impactoId: calculated.impactoId,
           fuentesUsuarios: {
-            create: buildFuenteUsuarioRows(dto.fuentesUsuarios),
+            create: buildFuenteUsuarioRows(scopedDto.fuentesUsuarios),
           },
         },
         include: {
@@ -207,16 +214,11 @@ export class ActivosService {
   }
 
   async update(id: number, dto: UpdateActivoDto, actor?: AuthenticatedUser) {
-    if (isActivoStatusOnlyUpdate(dto)) {
-      this.authz.assertCanManageAssets(actor);
-    } else {
-      this.authz.assertCanAuthorAssets(actor);
-    }
+    this.authz.assertCanManageAssets(actor);
     const activo = await this.ensureExists(id, actor);
-    this.authz.assertCanUseDependencia(
-      actor,
-      dto.dependenciaId !== undefined ? dto.dependenciaId : activo.dependenciaId,
-    );
+    const nextDependenciaId =
+      dto.dependenciaId !== undefined ? dto.dependenciaId : activo.dependenciaId;
+    this.authz.assertCanUseDependencia(actor, nextDependenciaId);
 
     if (dto.codigo !== undefined && dto.codigo.trim() !== activo.codigo) {
       await this.ensureCodigoDisponible(dto.codigo, id);
@@ -665,10 +667,4 @@ function mergeActivoForCalculation(
         ? dto.disponibilidad
         : current.disponibilidad,
   };
-}
-
-function isActivoStatusOnlyUpdate(dto: UpdateActivoDto) {
-  const keys = Object.keys(dto) as Array<keyof UpdateActivoDto>;
-
-  return keys.length === 1 && dto.activo !== undefined;
 }

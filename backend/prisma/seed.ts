@@ -669,6 +669,14 @@ const USER_SEEDS: UserSeed[] = [
     dependenciaSigla: "DSGSIF",
   },
   {
+    username: "operador.dnac",
+    password: "Operador1234*",
+    nombre: "Operador DNAC",
+    email: "operador.dnac@sistema.local",
+    role: RoleCode.OPERADOR,
+    dependenciaSigla: "DNAC",
+  },
+  {
     username: "operador.dnti",
     password: "Operador1234*",
     nombre: "Operador DNTI",

@@ -17,8 +17,8 @@ const AUTHOR_ROLES = new Set([
   'RESPONSABLE_DEPENDENCIA',
 ]);
 const ASSET_MANAGER_ROLES = new Set([
-  ...AUTHOR_ROLES,
   ...REVIEWER_ROLES,
+  ...FUNCTIONAL_ADMIN_ROLES,
 ]);
 const TRANSVERSAL_READ_ROLES = new Set([
   ...TECHNICAL_ADMIN_ROLES,
@@ -125,6 +125,36 @@ export class AuthorizationScopeService {
     }
   }
 
+  resolveDependenciaIdForWrite(
+    user: AuthenticatedUser | undefined,
+    dependenciaId: number | null | undefined,
+    options: { fallbackToActor?: boolean } = {},
+  ): number | undefined {
+    if (!user || this.isGlobal(user)) {
+      return dependenciaId ?? undefined;
+    }
+
+    const actorDependenciaId = this.requireDependencia(user);
+
+    if (dependenciaId === undefined || dependenciaId === null) {
+      if (options.fallbackToActor) {
+        return actorDependenciaId;
+      }
+
+      throw new ForbiddenException(
+        'No tiene permisos para operar informacion sin dependencia asignada.',
+      );
+    }
+
+    if (dependenciaId !== actorDependenciaId) {
+      throw new ForbiddenException(
+        'No tiene permisos para operar informacion de otra dependencia.',
+      );
+    }
+
+    return actorDependenciaId;
+  }
+
   assertCanUseSubdireccion(
     user: AuthenticatedUser | undefined,
     subdireccionId: number | null | undefined,
@@ -159,7 +189,7 @@ export class AuthorizationScopeService {
   assertCanManageAssets(user: AuthenticatedUser | undefined) {
     if (!user || !ASSET_MANAGER_ROLES.has(user.role)) {
       throw new ForbiddenException(
-        'El rol no esta autorizado para crear, modificar o dar de baja activos de informacion.',
+        'El rol no esta autorizado para modificar o dar de baja activos de informacion.',
       );
     }
   }

@@ -1,7 +1,16 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { apiClient } from "../../services/api-client";
+import {
+  formatDependencyScope,
+  getAssignedDependencyScope,
+  matchesAssignedDependencyScope,
+  shouldRestrictToAssignedDependency,
+  type DependencyScopeEntity,
+} from "../auth/dependency-scope";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import {
@@ -25,20 +34,48 @@ import {
 import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
 
+type DependenciasResponse = {
+  data: DependencyScopeEntity[];
+};
+
 export function ActivitiesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
+  const restrictToAssignedDependency = shouldRestrictToAssignedDependency(user);
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const dependenciasQuery = useQuery({
+    queryKey: ["dependencias", "activities-scope"],
+    queryFn: async () => {
+      const response = await apiClient.get<DependenciasResponse>("/dependencias", {
+        params: { activo: true },
+      });
+
+      return response.data.data;
+    },
+  });
   const ratRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), [workspaceVersion]);
   const activityRecords = useMemo(
     () => ratRecords.flatMap((rat) => rat.activities),
     [ratRecords],
   );
+  const assignedDependencyScope = getAssignedDependencyScope(
+    user,
+    dependenciasQuery.data ?? [],
+  );
+  const scopedActivityRecords = useMemo(
+    () =>
+      restrictToAssignedDependency
+        ? activityRecords.filter((activity) =>
+            matchesAssignedDependencyScope(activity, assignedDependencyScope),
+          )
+        : activityRecords,
+    [activityRecords, assignedDependencyScope, restrictToAssignedDependency],
+  );
   const dependenciaOptions = useMemo(
-    () => Array.from(new Set(activityRecords.map((item) => item.dependencia))).sort(),
-    [activityRecords],
+    () => Array.from(new Set(scopedActivityRecords.map((item) => item.dependencia))).sort(),
+    [scopedActivityRecords],
   );
   const riskOptions = getRiskOptions();
   const statusOptions = getRatStatusOptions();
@@ -53,7 +90,8 @@ export function ActivitiesPage() {
   const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
-  const filteredActivities = activityRecords.filter((activity) => {
+  const effectiveDependencia = restrictToAssignedDependency ? "Todas" : dependencia;
+  const filteredActivities = scopedActivityRecords.filter((activity) => {
     const matchesSearch =
       search.trim().length === 0 ||
       [
@@ -66,7 +104,8 @@ export function ActivitiesPage() {
         .join(" ")
         .toLowerCase()
         .includes(search.toLowerCase());
-    const matchesDependencia = dependencia === "Todas" || activity.dependencia === dependencia;
+    const matchesDependencia =
+      effectiveDependencia === "Todas" || activity.dependencia === effectiveDependencia;
     const matchesEstado = estado === "Todos" || activity.estado === estado;
     const matchesRiesgo = riesgo === "Todos" || activity.riesgo === riesgo;
     const matchesEipd =
@@ -77,35 +116,37 @@ export function ActivitiesPage() {
   });
 
   const activeActivity =
-    activityRecords.find((item) => item.id === activeActivityId) ?? null;
+    scopedActivityRecords.find((item) => item.id === activeActivityId) ?? null;
 
   useEffect(() => {
     setSearch(searchParams.get("q") ?? "");
-    setDependencia(searchParams.get("dependencia") ?? "Todas");
+    setDependencia(
+      restrictToAssignedDependency ? "Todas" : searchParams.get("dependencia") ?? "Todas",
+    );
     setEstado(searchParams.get("estado") ?? "Todos");
     setRiesgo(searchParams.get("riesgo") ?? "Todos");
     setEipd(searchParams.get("eipd") ?? "Todos");
-  }, [searchParams]);
+  }, [restrictToAssignedDependency, searchParams]);
 
   useEffect(() => {
     if (activeActivityId === null) {
       return;
     }
 
-    if (!activityRecords.some((item) => item.id === activeActivityId)) {
+    if (!scopedActivityRecords.some((item) => item.id === activeActivityId)) {
       setActiveActivityId(null);
     }
-  }, [activityRecords, activeActivityId]);
+  }, [scopedActivityRecords, activeActivityId]);
 
   const previewActivity =
-    activityRecords.find((item) => item.id === previewActivityId) ?? null;
+    scopedActivityRecords.find((item) => item.id === previewActivityId) ?? null;
   const previewTraceability = previewActivity
     ? getActivityTraceability(previewActivity.id)
     : null;
   const previewSignatures = buildSignatureFields(previewActivity, previewTraceability);
 
   const relationshipActivity =
-    activityRecords.find((item) => item.id === relationshipActivityId) ?? null;
+    scopedActivityRecords.find((item) => item.id === relationshipActivityId) ?? null;
   const relationshipTraceability = relationshipActivity
     ? getActivityTraceability(relationshipActivity.id)
     : null;
@@ -150,28 +191,28 @@ export function ActivitiesPage() {
     () => [
       {
         label: "Total actividades",
-        value: activityRecords.length,
+        value: scopedActivityRecords.length,
         tone: "neutral",
       },
       {
         label: "Borrador",
-        value: activityRecords.filter((item) => item.estado === "Borrador").length,
+        value: scopedActivityRecords.filter((item) => item.estado === "Borrador").length,
         tone:
-          activityRecords.some((item) => item.estado === "Borrador") ? "neutral" : "success",
+          scopedActivityRecords.some((item) => item.estado === "Borrador") ? "neutral" : "success",
       },
       {
         label: "En revision",
-        value: activityRecords.filter((item) => item.estado === "En revision").length,
+        value: scopedActivityRecords.filter((item) => item.estado === "En revision").length,
         tone:
-          activityRecords.some((item) => item.estado === "En revision") ? "warning" : "success",
+          scopedActivityRecords.some((item) => item.estado === "En revision") ? "warning" : "success",
       },
       {
         label: "Vigentes",
-        value: activityRecords.filter((item) => item.estado === "Vigente").length,
+        value: scopedActivityRecords.filter((item) => item.estado === "Vigente").length,
         tone: "success",
       },
     ],
-    [activityRecords],
+    [scopedActivityRecords],
   );
 
   function handlePrepareTreatment(activity: ActivityRegistryRecord, mode: "edit" | "duplicate") {
@@ -200,6 +241,9 @@ export function ActivitiesPage() {
             {roleCapabilities.activities.update
               ? "Puede crear, editar y duplicar tratamientos."
               : "Puede consultar, revisar y formalizar segun el flujo de aprobacion."}
+            {restrictToAssignedDependency
+              ? ` Alcance: ${formatDependencyScope(assignedDependencyScope)}.`
+              : " Alcance: institucional transversal."}
           </p>
         </div>
 
@@ -245,9 +289,14 @@ export function ActivitiesPage() {
               className="input"
               value={dependencia}
               onChange={(event) => setDependencia(event.target.value)}
+              disabled={restrictToAssignedDependency}
             >
-              <option value="Todas">Todas</option>
-              {dependenciaOptions.map((item) => (
+              <option value="Todas">
+                {restrictToAssignedDependency
+                  ? formatDependencyScope(assignedDependencyScope)
+                  : "Todas"}
+              </option>
+              {!restrictToAssignedDependency && dependenciaOptions.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
