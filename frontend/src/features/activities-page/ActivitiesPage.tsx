@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
@@ -37,6 +37,7 @@ import {
 } from "../rat/TreatmentReportPreview";
 import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
+import { ArchiveConfirmModal } from "./ArchiveConfirmModal";
 
 type DependenciasResponse = {
   data: DependencyScopeEntity[];
@@ -56,6 +57,7 @@ type BackendActivity = {
   subproceso: string | null;
   versionActualId: number | null;
   versionActual: string | null;
+  estadoGeneral: string;
   estadoVersionActual: string | null;
   finalidad: string | null;
   plazoConservacion: string | null;
@@ -151,6 +153,19 @@ export function ActivitiesPage() {
   const [activeActivityId, setActiveActivityId] = useState<number | null>(null);
   const [previewActivityId, setPreviewActivityId] = useState<number | null>(null);
   const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
+  const [archiveActivityId, setArchiveActivityId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+      await apiClient.patch(`/actividades/${id}/archive`, { motivo });
+    },
+    onSuccess: () => {
+      setArchiveActivityId(null);
+      setActiveActivityId(null);
+      void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
+    },
+  });
 
   const relationshipActivity =
     scopedActivityRecords.find((item) => item.id === relationshipActivityId) ?? null;
@@ -170,7 +185,10 @@ export function ActivitiesPage() {
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const effectiveDependencia = restrictToAssignedDependency ? "Todas" : dependencia;
-  const filteredActivities = scopedActivityRecords.filter((activity) => {
+  const visibleActivityRecords = roleCapabilities.role === "REVISOR"
+    ? scopedActivityRecords.filter((a) => a.estado !== "Archivado")
+    : scopedActivityRecords;
+  const filteredActivities = visibleActivityRecords.filter((activity) => {
     const matchesSearch =
       search.trim().length === 0 ||
       [
@@ -239,7 +257,10 @@ export function ActivitiesPage() {
   }, [relationshipActivity, mapaVersionId, mapaActivosQuery.data]);
 
   const isAnyModalOpen =
-    previewActivityId !== null || relationshipActivityId !== null || activeActivityId !== null;
+    previewActivityId !== null ||
+    relationshipActivityId !== null ||
+    activeActivityId !== null ||
+    archiveActivityId !== null;
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -267,6 +288,7 @@ export function ActivitiesPage() {
         setPreviewActivityId(null);
         setRelationshipActivityId(null);
         setActiveActivityId(null);
+        setArchiveActivityId(null);
       }
     };
 
@@ -566,8 +588,7 @@ export function ActivitiesPage() {
             setWorkspaceVersion((current) => current + 1);
           }}
           onArchive={() => {
-            persistActivityStatus(activeActivity.id, "Archivado");
-            setWorkspaceVersion((current) => current + 1);
+            setArchiveActivityId(activeActivity.id);
           }}
           onChangeStatus={() => handleActivityStatusChange(activeActivity)}
           onClose={() => setActiveActivityId(null)}
@@ -581,6 +602,22 @@ export function ActivitiesPage() {
             setActiveActivityId(null);
             setPreviewActivityId(activeActivity.id);
           }}
+        />
+      ) : null}
+
+      {archiveActivityId !== null ? (
+        <ArchiveConfirmModal
+          activityCodigo={
+            scopedActivityRecords.find((a) => a.id === archiveActivityId)?.codigo ?? ""
+          }
+          activityNombre={
+            scopedActivityRecords.find((a) => a.id === archiveActivityId)?.nombre ?? ""
+          }
+          isSubmitting={archiveMutation.isPending}
+          onConfirm={(motivo) => {
+            archiveMutation.mutate({ id: archiveActivityId, motivo });
+          }}
+          onCancel={() => setArchiveActivityId(null)}
         />
       ) : null}
     </section>
@@ -927,7 +964,9 @@ function mapImpactoToCriticidad(
 }
 
 function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
-  const estado = mapEstado(a.estadoVersionActual);
+  const estado = a.estadoGeneral === "ARCHIVADO"
+    ? ("Archivado" as RecordStatus)
+    : mapEstado(a.estadoVersionActual);
   const cats = Array.isArray(a.categoriasDatos)
     ? (a.categoriasDatos as string[]).join(", ")
     : "";

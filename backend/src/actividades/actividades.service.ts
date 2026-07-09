@@ -234,7 +234,7 @@ export class ActividadesService {
     dto: ArchiveActividadDto,
     actor?: AuthenticatedUser,
   ) {
-    this.authz.assertCanAdministerWorkflow(actor);
+    this.authz.assertCanArchiveActivity(actor);
     const existing = await this.ensureExists(id, actor);
 
     const data = await this.prisma.$transaction(async (tx) => {

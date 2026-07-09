@@ -300,6 +300,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
         activities: {
           ...NO_CRUD,
           approve: true,
+          archive: true,
           map: true,
           preview: true,
         },

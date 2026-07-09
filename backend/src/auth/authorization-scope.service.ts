@@ -54,6 +54,10 @@ const USER_ADMIN_ROLES = new Set([
 const WORKFLOW_ADMIN_ROLES = new Set([
   ...TECHNICAL_ADMIN_ROLES,
 ]);
+const ACTIVITY_ARCHIVE_ROLES = new Set([
+  ...TECHNICAL_ADMIN_ROLES,
+  ...REVIEWER_ROLES,
+]);
 const FUNCTIONAL_APPROVER_ROLES = new Set([
   ...REVIEWER_ROLES,
 ]);
@@ -254,6 +258,14 @@ export class AuthorizationScopeService {
     if (!user || !WORKFLOW_ADMIN_ROLES.has(user.role)) {
       throw new ForbiddenException(
         'Solo administracion tecnica puede ejecutar acciones administrativas del flujo.',
+      );
+    }
+  }
+
+  assertCanArchiveActivity(user: AuthenticatedUser | undefined) {
+    if (!user || !ACTIVITY_ARCHIVE_ROLES.has(user.role)) {
+      throw new ForbiddenException(
+        'El rol no esta autorizado para archivar actividades de tratamiento.',
       );
     }
   }
