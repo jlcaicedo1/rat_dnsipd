@@ -26,7 +26,12 @@ export class ActividadActivosService {
         activo: this.authz.activoWhere(actor),
       },
       include: {
-        activo: true,
+        activo: {
+          include: {
+            tipoActivo: { select: { nombre: true } },
+            impacto: { select: { nombre: true } },
+          },
+        },
       },
       orderBy: [{ id: 'desc' }],
     });

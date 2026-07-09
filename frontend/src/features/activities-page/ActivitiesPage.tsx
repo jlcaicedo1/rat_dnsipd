@@ -20,6 +20,8 @@ import {
   getRiskOptions,
   getRatStatusOptions,
   type ActivityRegistryRecord,
+  type ActivityTraceabilityAsset,
+  type ActivityTraceabilityModel,
   type RecordStatus,
   type RiskLevel,
   type SignatureFieldState,
@@ -52,6 +54,7 @@ type BackendActivity = {
   macroproceso: string | null;
   proceso: string | null;
   subproceso: string | null;
+  versionActualId: number | null;
   versionActual: string | null;
   estadoVersionActual: string | null;
   finalidad: string | null;
@@ -65,6 +68,20 @@ type BackendActivity = {
   medidaSeguridad: string | null;
   requiereEipd: boolean;
   fechaLevantamiento: string | null;
+};
+
+type BackendActivo = {
+  id: number;
+  activo: {
+    id: number;
+    nombre: string;
+    custodio: string | null;
+    areaCustodio: string | null;
+    unidadPropietariaActivo: string | null;
+    direccionIpUrl: string | null;
+    tipoActivo: { nombre: string } | null;
+    impacto: { nombre: string } | null;
+  };
 };
 
 export function ActivitiesPage() {
@@ -134,6 +151,22 @@ export function ActivitiesPage() {
   const [activeActivityId, setActiveActivityId] = useState<number | null>(null);
   const [previewActivityId, setPreviewActivityId] = useState<number | null>(null);
   const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
+
+  const relationshipActivity =
+    scopedActivityRecords.find((item) => item.id === relationshipActivityId) ?? null;
+  const mapaVersionId = relationshipActivity?.versionId ?? null;
+
+  const mapaActivosQuery = useQuery({
+    queryKey: ["mapa-activos", mapaVersionId],
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: BackendActivo[] }>(
+        `/actividad-versiones/${mapaVersionId}/activos`,
+      );
+      return res.data.data;
+    },
+    enabled: mapaVersionId !== null,
+    staleTime: 60_000,
+  });
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const effectiveDependencia = restrictToAssignedDependency ? "Todas" : dependencia;
@@ -191,11 +224,19 @@ export function ActivitiesPage() {
     : null;
   const previewSignatures = buildSignatureFields(previewActivity, previewTraceability);
 
-  const relationshipActivity =
-    scopedActivityRecords.find((item) => item.id === relationshipActivityId) ?? null;
-  const relationshipTraceability = relationshipActivity
-    ? getActivityTraceability(relationshipActivity.id)
-    : null;
+  const relationshipTraceability: ActivityTraceabilityModel | null = useMemo(() => {
+    if (!relationshipActivity) return null;
+    // Backend activity with a DB version → build from fetched activos
+    if (mapaVersionId !== null && mapaActivosQuery.data) {
+      return buildTraceabilityFromBackend(relationshipActivity, mapaActivosQuery.data);
+    }
+    // Hardcoded activity → use legacy lookup
+    if (mapaVersionId === null) {
+      return getActivityTraceability(relationshipActivity.id);
+    }
+    // Backend activity but query still loading → return empty shell so modal opens
+    return buildTraceabilityFromBackend(relationshipActivity, []);
+  }, [relationshipActivity, mapaVersionId, mapaActivosQuery.data]);
 
   const isAnyModalOpen =
     previewActivityId !== null || relationshipActivityId !== null || activeActivityId !== null;
@@ -503,6 +544,7 @@ export function ActivitiesPage() {
         <ActivityMapModal
           activity={relationshipActivity}
           isOpen
+          isLoading={mapaVersionId !== null && mapaActivosQuery.isLoading}
           onClose={() => setRelationshipActivityId(null)}
           traceability={relationshipTraceability}
         />
@@ -828,6 +870,62 @@ function mapEstado(raw: string | null): RecordStatus {
   return "Borrador";
 }
 
+function buildTraceabilityFromBackend(
+  activity: ActivityRegistryRecord,
+  activos: BackendActivo[],
+): ActivityTraceabilityModel {
+  const assets: ActivityTraceabilityAsset[] = activos.map((r) => ({
+    id: String(r.activo.id),
+    nombre: r.activo.nombre,
+    tipo: r.activo.tipoActivo?.nombre ?? "Activo de información",
+    criticidad: mapImpactoToCriticidad(r.activo.impacto?.nombre ?? null),
+    custodio: r.activo.custodio ?? r.activo.areaCustodio ?? "Pendiente",
+    plataforma:
+      r.activo.unidadPropietariaActivo ??
+      r.activo.direccionIpUrl ??
+      "Sin plataforma registrada",
+  }));
+
+  const cats = Array.isArray((activity as unknown as { categoriasDatos?: unknown }).categoriasDatos)
+    ? (activity as unknown as { categoriasDatos: string[] }).categoriasDatos
+    : activity.report.categoriasDatos
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+  return {
+    owner: {
+      nombre: activity.responsables[0] ?? "Responsable institucional",
+      cargo: activity.unidadEjecutora || "Unidad ejecutora",
+      unidad: activity.dependencia,
+    },
+    activos: assets,
+    categoriasDatos: cats,
+    titularesImpactados: activity.report.titulares
+      ? [activity.report.titulares]
+      : [],
+    tercerosRelacionados: [],
+    controlesClave: activity.report.medidasSeguridad
+      ? [activity.report.medidasSeguridad]
+      : [],
+    riesgosRelacionados: [],
+    artefactosRelacionados: [],
+    flujosRelacionados: [],
+    puntosExposicion: [],
+    accionesContencion: [],
+  };
+}
+
+function mapImpactoToCriticidad(
+  impacto: string | null,
+): ActivityTraceabilityAsset["criticidad"] {
+  if (!impacto) return "Media";
+  const n = impacto.toUpperCase();
+  if (n.includes("CATASTRO") || n.includes("MAYOR")) return "Alta";
+  if (n.includes("MENOR") || n.includes("INSIGNIFICANTE")) return "Baja";
+  return "Media";
+}
+
 function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
   const estado = mapEstado(a.estadoVersionActual);
   const cats = Array.isArray(a.categoriasDatos)
@@ -840,6 +938,7 @@ function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
   return {
     id: a.id,
     ratId: a.ratId,
+    versionId: a.versionActualId ?? undefined,
     codigo: a.codigo,
     nombre: a.nombre,
     ratCodigo: a.ratCodigo,

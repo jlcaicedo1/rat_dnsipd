@@ -84,6 +84,8 @@ export type TreatmentReport = {
 export type ActivityRegistryRecord = {
   id: number;
   ratId: number;
+  /** ID of the current ActividadVersion in the DB; present only for backend-sourced activities */
+  versionId?: number;
   codigo: string;
   nombre: string;
   ratCodigo: string;

@@ -73,6 +73,7 @@ export class ActividadesService {
         macroproceso: actividad.macroproceso ?? null,
         proceso: actividad.proceso ?? null,
         subproceso: actividad.subproceso ?? null,
+        versionActualId: v?.id ?? null,
         versionActual: v?.numeroVersion ?? null,
         estadoVersionActual: v?.estadoVersion ?? null,
         finalidad: v?.finalidad ?? null,

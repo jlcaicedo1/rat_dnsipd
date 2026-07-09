@@ -7,6 +7,7 @@ import { AppIcon } from "../../components/AppIcon";
 
 type ActivityMapModalProps = {
   isOpen: boolean;
+  isLoading?: boolean;
   activity: ActivityRegistryRecord;
   traceability: ActivityTraceabilityModel;
   onClose: () => void;
@@ -14,6 +15,7 @@ type ActivityMapModalProps = {
 
 export function ActivityMapModal({
   isOpen,
+  isLoading = false,
   activity,
   traceability,
   onClose,
@@ -49,7 +51,9 @@ export function ActivityMapModal({
             <div className="modal-title-meta">
               <span className="pill">{activity.codigo}</span>
               <span className="pill">{activity.ratCodigo}</span>
-              <span className="pill">{traceability.activos.length} activos</span>
+              <span className="pill">
+                {isLoading ? "Cargando activos…" : `${traceability.activos.length} activos`}
+              </span>
             </div>
           </div>
 
