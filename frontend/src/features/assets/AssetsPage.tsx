@@ -313,14 +313,28 @@ export function AssetsPage() {
     },
   });
 
-  const deleteAssetMutation = useMutation({
-    mutationFn: async (assetId: number) => {
-      await apiClient.delete(`/activos/${assetId}`);
+  const toggleAssetActiveMutation = useMutation({
+    mutationFn: async ({ assetId, enable }: { assetId: number; enable: boolean }) => {
+      if (enable) {
+        await apiClient.patch(`/activos/${assetId}`, { activo: true });
+      } else {
+        await apiClient.patch(`/activos/${assetId}/disable`);
+      }
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, { enable }) => {
       await queryClient.invalidateQueries({ queryKey: ["activos"] });
+      setAssetFeedback({
+        type: "success",
+        message: enable ? "Activo reactivado con exito." : "Activo dado de baja con exito.",
+      });
       setActiveAssetId(null);
       setDraftAsset(null);
+    },
+    onError: (error) => {
+      setAssetFeedback({
+        type: "error",
+        message: getAssetMutationErrorMessage(error),
+      });
     },
   });
 
@@ -365,6 +379,18 @@ export function AssetsPage() {
   );
   const fuenteActivoOptions = useMemo(
     () => getCatalogOptionsByType(catalogEntries, CATALOG_TYPE_KEYS.FUENTE_ACTIVO),
+    [catalogEntries],
+  );
+  const datosPersonalesOptions = useMemo(
+    () => getCatalogOptionsByType(catalogEntries, CATALOG_TYPE_KEYS.DATOS_PERSONALES_ACTIVO),
+    [catalogEntries],
+  );
+  const bajaProgramadaOptions = useMemo(
+    () => getCatalogOptionsByType(catalogEntries, CATALOG_TYPE_KEYS.BAJA_PROGRAMADA_ACTIVO),
+    [catalogEntries],
+  );
+  const propiedadIntelectualOptions = useMemo(
+    () => getCatalogOptionsByType(catalogEntries, CATALOG_TYPE_KEYS.PROPIEDAD_INTELECTUAL_ACTIVO),
     [catalogEntries],
   );
 
@@ -808,7 +834,7 @@ export function AssetsPage() {
           impactoPreview={activeAssetPreview}
           isDependencyLocked={restrictToAssignedDependency}
           isCreating={activeAssetId === "new"}
-          isDeleting={deleteAssetMutation.isPending}
+          isTogglingActive={toggleAssetActiveMutation.isPending}
           isLoadingDetail={detailQuery.isLoading && typeof activeAssetId === "number"}
           isSaving={saveAssetMutation.isPending}
           onChange={setDraftAsset}
@@ -816,9 +842,9 @@ export function AssetsPage() {
             setActiveAssetId(null);
             setDraftAsset(null);
           }}
-          onDelete={() => {
+          onToggleActive={() => {
             if (draftAsset?.id) {
-              deleteAssetMutation.mutate(draftAsset.id);
+              toggleAssetActiveMutation.mutate({ assetId: draftAsset.id, enable: !draftAsset.activo });
             }
           }}
           onSave={() => {
@@ -834,6 +860,9 @@ export function AssetsPage() {
             yesNo: yesNoOptions,
             visibilidad: visibleInternetOptions,
             fuenteActivo: fuenteActivoOptions,
+            datosPersonales: datosPersonalesOptions,
+            bajaProgramada: bajaProgramadaOptions,
+            propiedadIntelectual: propiedadIntelectualOptions,
           }}
         />
       ) : null}
@@ -1091,12 +1120,12 @@ function AssetManagementModal({
   impactoPreview,
   isDependencyLocked,
   isCreating,
-  isDeleting,
+  isTogglingActive,
   isLoadingDetail,
   isSaving,
   onChange,
   onClose,
-  onDelete,
+  onToggleActive,
   onSave,
   options,
 }: {
@@ -1108,12 +1137,12 @@ function AssetManagementModal({
   impactoPreview: { valor: string; impacto: string; pillClass: string } | null;
   isDependencyLocked: boolean;
   isCreating: boolean;
-  isDeleting: boolean;
+  isTogglingActive: boolean;
   isLoadingDetail: boolean;
   isSaving: boolean;
   onChange: (draft: AssetDraft | null) => void;
   onClose: () => void;
-  onDelete: () => void;
+  onToggleActive: () => void;
   onSave: () => void;
   options: {
     tipoActivo: AssetCatalogOption[];
@@ -1123,6 +1152,9 @@ function AssetManagementModal({
     yesNo: AssetCatalogOption[];
     visibilidad: AssetCatalogOption[];
     fuenteActivo: AssetCatalogOption[];
+    datosPersonales: AssetCatalogOption[];
+    bajaProgramada: AssetCatalogOption[];
+    propiedadIntelectual: AssetCatalogOption[];
   };
 }) {
   const canSubmit =
@@ -1425,7 +1457,7 @@ function AssetManagementModal({
                 <h4>Datos y valoracion</h4>
                 <div className="catalog-form-grid">
                   <label className="field">
-                    <span>Datos personales</span>
+                    <span>Procesa datos personales</span>
                     <select
                       className="input"
                       value={draft.datosPersonalesId}
@@ -1434,7 +1466,7 @@ function AssetManagementModal({
                       }
                     >
                       <option value="">Seleccione</option>
-                      {options.yesNo.map((item) => (
+                      {options.datosPersonales.map((item) => (
                         <option key={item.id} value={String(item.id)}>
                           {item.nombre}
                         </option>
@@ -1544,7 +1576,7 @@ function AssetManagementModal({
                 <h4>Controles y ciclo de vida</h4>
                 <div className="catalog-form-grid">
                   <label className="field">
-                    <span>Baja programada</span>
+                    <span>Motivo de baja programada</span>
                     <select
                       className="input"
                       value={draft.bajaProgramadaId}
@@ -1553,7 +1585,7 @@ function AssetManagementModal({
                       }
                     >
                       <option value="">Seleccione</option>
-                      {options.yesNo.map((item) => (
+                      {options.bajaProgramada.map((item) => (
                         <option key={item.id} value={String(item.id)}>
                           {item.nombre}
                         </option>
@@ -1571,7 +1603,7 @@ function AssetManagementModal({
                       }
                     >
                       <option value="">Seleccione</option>
-                      {options.yesNo.map((item) => (
+                      {options.propiedadIntelectual.map((item) => (
                         <option key={item.id} value={String(item.id)}>
                           {item.nombre}
                         </option>
@@ -1606,14 +1638,26 @@ function AssetManagementModal({
 
                 <div className="activity-action-modal-actions">
                   {canArchive && draft.id ? (
-                    <button
-                      type="button"
-                      className="button-table-action button-table-action-danger"
-                      disabled={isDeleting}
-                      onClick={onDelete}
-                    >
-                      {isDeleting ? "Eliminando..." : "Eliminar activo"}
-                    </button>
+                    draft.activo ? (
+                      <button
+                        type="button"
+                        className="button-table-action button-table-action-danger"
+                        disabled={isTogglingActive}
+                        style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
+                        onClick={onToggleActive}
+                      >
+                        {isTogglingActive ? "Procesando..." : "Dar de baja"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button-table-action button-table-action-primary"
+                        disabled={isTogglingActive}
+                        onClick={onToggleActive}
+                      >
+                        {isTogglingActive ? "Procesando..." : "Reactivar"}
+                      </button>
+                    )
                   ) : null}
                   {canSave ? (
                     <button

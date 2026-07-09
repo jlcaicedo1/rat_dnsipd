@@ -1604,6 +1604,28 @@ export function RatCreatePage() {
                       </strong>
                     </article>
                   </div>
+                  {eipdRecommended && (
+                    <div style={{ marginTop: 16, padding: "12px 16px", background: "rgba(23,79,159,0.06)", borderRadius: 8, border: "1px solid rgba(23,79,159,0.18)", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: 13, color: "var(--ink)", fontWeight: 600 }}>Esta actividad requiere Evaluacion de Impacto en Proteccion de Datos (EIPD)</p>
+                        <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>El contexto de la actividad sera heredado automaticamente al formulario EIPD.</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="button-primary"
+                        onClick={() => {
+                          const params = new URLSearchParams({
+                            actividad: generatedCode,
+                            nombre: form.nombreTratamiento.trim() || generatedCode,
+                            dependencia: selectedDependencia ? formatOrgLabel(selectedDependencia.nombre, selectedDependencia.sigla) : "",
+                          });
+                          navigate(`/eipd/evaluacion/new?${params.toString()}`);
+                        }}
+                      >
+                        Iniciar EIPD →
+                      </button>
+                    </div>
+                  )}
                 </SectionCard>
 
                 <SectionCard

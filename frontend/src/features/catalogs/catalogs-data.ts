@@ -1,5 +1,5 @@
 export type CatalogStatus = "Activo" | "Inactivo";
-export type CatalogDomain = "GENERAL" | "TRATAMIENTOS" | "ACTIVOS";
+export type CatalogDomain = "GENERAL" | "TRATAMIENTOS" | "ACTIVOS" | "EIPD" | "RIESGOS";
 
 export type CatalogEntry = {
   id: number | string;
@@ -32,6 +32,22 @@ export const CATALOG_TYPE_KEYS = {
   FUENTE_ACTIVO: "FUENTE_ACTIVO",
   IMPACTO_ACTIVO: "IMPACTO_ACTIVO",
   CLASIFICACION_INFORMACION: "CLASIFICACION_INFORMACION",
+  // Activos — tipos sin definir en el frontend que ya existen como FK en ActivoInformacion
+  DATOS_PERSONALES_ACTIVO: "DATOS_PERSONALES_ACTIVO",
+  BAJA_PROGRAMADA_ACTIVO: "BAJA_PROGRAMADA_ACTIVO",
+  PROPIEDAD_INTELECTUAL_ACTIVO: "PROPIEDAD_INTELECTUAL_ACTIVO",
+  // EIPD
+  CRITERIO_EIPD: "CRITERIO_EIPD",
+  MEDIDA_TIPO_EIPD: "MEDIDA_TIPO_EIPD",
+  TIPO_SALVAGUARDA_INTERNACIONAL: "TIPO_SALVAGUARDA_INTERNACIONAL",
+  // Actividades / General
+  PERIODICIDAD_REVISION: "PERIODICIDAD_REVISION",
+  // Riesgos (seed disponible, módulo pendiente)
+  NIVEL_RIESGO: "NIVEL_RIESGO",
+  DIMENSION_RIESGO: "DIMENSION_RIESGO",
+  PROBABILIDAD_RIESGO: "PROBABILIDAD_RIESGO",
+  TIPO_CONTROL_RIESGO: "TIPO_CONTROL_RIESGO",
+  CATEGORIA_AMENAZA: "CATEGORIA_AMENAZA",
 } as const;
 
 const TYPE_LABELS: Record<string, string> = {
@@ -56,12 +72,26 @@ const TYPE_LABELS: Record<string, string> = {
   [CATALOG_TYPE_KEYS.FUENTE_ACTIVO]: "Fuente del activo",
   [CATALOG_TYPE_KEYS.IMPACTO_ACTIVO]: "Impacto del activo",
   [CATALOG_TYPE_KEYS.CLASIFICACION_INFORMACION]: "Clasificacion de informacion",
+  [CATALOG_TYPE_KEYS.DATOS_PERSONALES_ACTIVO]: "Datos personales en el activo",
+  [CATALOG_TYPE_KEYS.BAJA_PROGRAMADA_ACTIVO]: "Motivo de baja programada",
+  [CATALOG_TYPE_KEYS.PROPIEDAD_INTELECTUAL_ACTIVO]: "Propiedad intelectual del activo",
+  [CATALOG_TYPE_KEYS.CRITERIO_EIPD]: "Criterio de activacion EIPD",
+  [CATALOG_TYPE_KEYS.MEDIDA_TIPO_EIPD]: "Tipo de medida EIPD",
+  [CATALOG_TYPE_KEYS.TIPO_SALVAGUARDA_INTERNACIONAL]: "Salvaguarda transferencia internacional",
+  [CATALOG_TYPE_KEYS.PERIODICIDAD_REVISION]: "Periodicidad de revision",
+  [CATALOG_TYPE_KEYS.NIVEL_RIESGO]: "Nivel de riesgo",
+  [CATALOG_TYPE_KEYS.DIMENSION_RIESGO]: "Dimension del riesgo",
+  [CATALOG_TYPE_KEYS.PROBABILIDAD_RIESGO]: "Probabilidad del riesgo",
+  [CATALOG_TYPE_KEYS.TIPO_CONTROL_RIESGO]: "Tipo de control del riesgo",
+  [CATALOG_TYPE_KEYS.CATEGORIA_AMENAZA]: "Categoria de amenaza",
 };
 
 const DOMAIN_LABELS: Record<string, string> = {
   GENERAL: "General",
   TRATAMIENTOS: "Tratamientos",
   ACTIVOS: "Activos",
+  EIPD: "EIPD",
+  RIESGOS: "Riesgos",
 };
 
 export function buildEmptyCatalogEntry(): CatalogEntry {

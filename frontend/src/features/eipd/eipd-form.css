@@ -1,0 +1,90 @@
+.eipdp-page { display: flex; flex-direction: column; }
+
+/* ── Panel navigation ── */
+.eipdp-nav { display: flex; flex-wrap: wrap; gap: 3px; padding: 14px 24px 0; background: var(--surface); border-bottom: 1px solid var(--line); }
+.eipdp-nav-btn { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 7px 12px; font: 600 12px var(--font-sans); color: var(--muted); cursor: pointer; white-space: nowrap; transition: color .14s, border-color .14s; display: flex; align-items: center; gap: 5px; }
+.eipdp-nav-btn:hover { color: var(--brand); }
+.eipdp-nav-btn.active { color: var(--brand); border-bottom-color: var(--brand); }
+.eipdp-nav-btn .ck { font-size: 11px; color: var(--success); }
+
+/* ── Top bar ── */
+.eipdp-topbar { background: var(--surface); border-bottom: 1px solid var(--line); padding: 8px 24px; display: flex; align-items: center; gap: 10px; }
+.eipdp-topbar h3 { font-size: 14px; font-weight: 600; flex: 1; color: var(--iess-navy); }
+.eipdp-save-indicator { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.eipdp-save-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.eipdp-save-dot.saving { background: var(--warning); }
+
+/* ── Content area ── */
+.eipdp-content { padding: 22px 24px 48px; }
+
+/* ── Cards ── */
+.eipdp-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 18px 20px; margin-bottom: 18px; }
+.eipdp-card-title { font-size: 14px; font-weight: 700; color: var(--brand-dark); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid var(--brand); display: flex; align-items: center; gap: 7px; }
+.eipdp-hint { font-size: 12.5px; color: var(--muted-strong); background: var(--brand-soft); padding: 8px 11px; border-radius: var(--radius-xs); margin-bottom: 14px; border-left: 3px solid var(--brand); line-height: 1.5; }
+
+/* ── Form grid ── */
+.eipdp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.eipdp-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 13px; }
+@media (max-width: 900px) { .eipdp-grid-2, .eipdp-grid-3 { grid-template-columns: 1fr; } }
+.eipdp-fg { margin-bottom: 12px; }
+.eipdp-fg label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .4px; }
+.eipdp-fg input, .eipdp-fg select, .eipdp-fg textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); font: 13px var(--font-sans); color: var(--ink); background: var(--surface-subtle); transition: border .14s; }
+.eipdp-fg input:focus, .eipdp-fg select:focus, .eipdp-fg textarea:focus { outline: none; border-color: var(--iess-navy-light); box-shadow: var(--focus); background: #fff; }
+.eipdp-fg textarea { resize: vertical; min-height: 55px; }
+
+/* ── Section divider ── */
+.eipdp-sdiv { font-size: 11px; font-weight: 700; color: var(--iess-navy); text-transform: uppercase; letter-spacing: .9px; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+
+/* ── Accordion (escenarios) ── */
+.eipdp-acc { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 10px; }
+.eipdp-acc-hd { padding: 12px 14px; background: var(--surface); cursor: pointer; display: flex; align-items: center; gap: 9px; transition: background .14s; border: none; width: 100%; text-align: left; }
+.eipdp-acc-hd:hover { background: var(--surface-subtle); }
+.eipdp-acc-hd.open { background: var(--iess-navy); color: #fff; }
+.eipdp-acc-id { font-size: 10.5px; font-weight: 700; color: var(--brand); flex-shrink: 0; width: 30px; }
+.eipdp-acc-hd.open .eipdp-acc-id { color: rgba(255,255,255,0.85); }
+.eipdp-acc-title { font-size: 12.5px; font-weight: 600; flex: 1; line-height: 1.4; }
+.eipdp-acc-norm { font-size: 10.5px; font-weight: 600; background: #e8f0fe; color: var(--iess-navy-light); padding: 2px 8px; border-radius: 4px; flex-shrink: 0; }
+.eipdp-acc-hd.open .eipdp-acc-norm { background: rgba(255,255,255,.2); color: rgba(255,255,255,.85); }
+.eipdp-acc-ic { font-size: 11px; transition: transform .2s; color: var(--muted); flex-shrink: 0; }
+.eipdp-acc-hd.open .eipdp-acc-ic { transform: rotate(180deg); color: rgba(255,255,255,.7); }
+.eipdp-acc-bd { display: none; padding: 18px; background: var(--surface-subtle); border-top: 1px solid var(--line); }
+.eipdp-acc-bd.open { display: block; }
+
+/* ── Category filter for S3 ── */
+.eipdp-cat-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.eipdp-cat-btn { padding: 4px 12px; border: 1px solid var(--line); border-radius: 20px; background: transparent; font: 600 12px var(--font-sans); color: var(--muted); cursor: pointer; transition: all .14s; }
+.eipdp-cat-btn:hover { border-color: var(--iess-navy); color: var(--iess-navy); }
+.eipdp-cat-btn.active { background: var(--iess-navy); border-color: var(--iess-navy); color: #fff; }
+
+/* ── Inline tables (dentro de escenarios) ── */
+.eipdp-tbl-wrap { overflow-x: auto; margin-top: 8px; border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.eipdp-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.eipdp-tbl th { background: var(--iess-navy); color: #fff; padding: 6px 8px; text-align: left; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.eipdp-tbl td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.eipdp-tbl tr:last-child td { border-bottom: none; }
+.eipdp-tbl input, .eipdp-tbl select, .eipdp-tbl textarea { border: 1px solid transparent; background: transparent; padding: 2px 4px; font: 12px var(--font-sans); width: 100%; color: var(--ink); }
+.eipdp-tbl input:focus, .eipdp-tbl select:focus, .eipdp-tbl textarea:focus { border-color: var(--iess-navy-light); background: #fff; border-radius: 3px; outline: none; }
+.eipdp-tbl textarea { min-height: 36px; resize: vertical; }
+
+/* ── Risk select color ── */
+select.risk-colored { font-weight: 700; }
+
+/* ── Add/Remove row buttons ── */
+.eipdp-add-row { margin-top: 7px; padding: 4px 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius-xs); background: transparent; font: 600 12px var(--font-sans); color: var(--muted); cursor: pointer; }
+.eipdp-add-row:hover { color: var(--iess-navy); border-color: var(--iess-navy); }
+.eipdp-del-row { padding: 2px 7px; background: var(--danger-soft); border: 1px solid var(--danger); color: var(--danger); border-radius: var(--radius-xs); font-size: 11px; cursor: pointer; }
+
+/* ── Progress bar ── */
+.eipdp-progress-wrap { height: 4px; background: var(--line); border-radius: 2px; margin: 0 24px; }
+.eipdp-progress { height: 100%; border-radius: 2px; background: var(--brand); transition: width .4s ease; }
+
+/* ── Signature cards ── */
+.eipdp-sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 900px) { .eipdp-sig-grid { grid-template-columns: 1fr; } }
+.eipdp-sig-card { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.eipdp-sig-role { background: var(--iess-navy); color: #fff; font-size: 11.5px; font-weight: 700; padding: 8px 12px; }
+.eipdp-sig-body { padding: 14px; }
+.eipdp-sig-area { margin-top: 8px; border: 1px dashed var(--line-strong); border-radius: var(--radius-xs); padding: 14px; text-align: center; font-size: 11px; color: var(--muted); background: var(--surface-subtle); min-height: 60px; }
+
+/* ── Toolbar ── */
+.eipdp-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--line); background: var(--surface); }

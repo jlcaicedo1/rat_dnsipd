@@ -13,8 +13,10 @@ import { RatModule } from "./rat/rat.module";
 import { ActividadesModule } from "./actividades/actividades.module";
 import { ActividadActivosModule } from "./actividad-activos/actividad-activos.module";
 import { ActividadVersionesModule } from "./actividad-versiones/actividad-versiones.module";
-import { EipdModule } from "./eipd/eipd.module";
 import { RiesgosModule } from "./riesgos/riesgos.module";
+import { EipdFormModule } from "./eipd-form/eipd-form.module";
+import { ChecklistDpdModule } from "./checklist-dpd/checklist-dpd.module";
+import { ImportRatModule } from "./import-rat/import-rat.module";
 
 @Module({
   imports: [
@@ -30,8 +32,10 @@ import { RiesgosModule } from "./riesgos/riesgos.module";
     ActividadVersionesModule,
     ActividadActivosModule,
     RiesgosModule,
-    EipdModule,
     ActivosModule,
+    EipdFormModule,
+    ChecklistDpdModule,
+    ImportRatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,9 +4,11 @@ import {
   BookOpenText,
   Boxes,
   Building2,
+  CheckSquare,
   ClipboardList,
   Database,
   FileSearch,
+  FilePen,
   FileText,
   GitBranch,
   History,
@@ -18,6 +20,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   TriangleAlert,
+  Upload,
   UserCog,
   Users,
 } from "lucide-react";
@@ -29,6 +32,8 @@ export type AppIconName =
   | "mtge"
   | "risks"
   | "eipd"
+  | "eipd-form"
+  | "checklist"
   | "reports"
   | "audit"
   | "catalogs"
@@ -43,7 +48,8 @@ export type AppIconName =
   | "users"
   | "activity"
   | "asset"
-  | "support";
+  | "support"
+  | "import-rat";
 
 const iconRegistry = {
   dashboard: LayoutDashboard,
@@ -52,6 +58,8 @@ const iconRegistry = {
   mtge: ShieldCheck,
   risks: TriangleAlert,
   eipd: ShieldAlert,
+  "eipd-form": FilePen,
+  checklist: CheckSquare,
   reports: FileText,
   audit: History,
   catalogs: BookOpenText,
@@ -67,6 +75,7 @@ const iconRegistry = {
   activity: ClipboardList,
   asset: Server,
   support: Database,
+  "import-rat": Upload,
 } satisfies Record<AppIconName, ComponentType<LucideProps>>;
 
 type AppIconProps = LucideProps & {

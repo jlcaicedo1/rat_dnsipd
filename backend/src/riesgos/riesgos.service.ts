@@ -262,14 +262,10 @@ export class RiesgosService {
       },
     });
 
-    const hasEipd = await tx.eipd.count({
-      where: { actividadVersionId },
-    });
-
     await tx.actividadVersion.update({
       where: { id: actividadVersionId },
       data: {
-        requiereEipd: (mtge?.esGranEscala ?? false) || highRiskCount > 0 || hasEipd > 0,
+        requiereEipd: (mtge?.esGranEscala ?? false) || highRiskCount > 0,
       },
     });
   }

@@ -12,11 +12,15 @@ import { AssetCatalogsPage } from "../features/catalogs/AssetCatalogsPage";
 import { CatalogsPage } from "../features/catalogs/CatalogsPage";
 import type { ExecutiveKpiItem } from "../components/ExecutiveKpiGrid";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
-import { EipdPage } from "../features/eipd/EipdPage";
+import { EipdFormPage } from "../features/eipd/EipdFormPage";
+import { EipdFormListPage } from "../features/eipd/EipdFormListPage";
+import { ChecklistDpdPage } from "../features/checklist-dpd/ChecklistDpdPage";
+import { ChecklistDpdListPage } from "../features/checklist-dpd/ChecklistDpdListPage";
 import { RatCreatePage } from "../features/rat/RatCreatePage";
 import { ModulePage } from "../features/modules/ModulePage";
 import { OrganizationStructurePage } from "../features/organization/OrganizationStructurePage";
 import { UserAdminPage } from "../features/users/UserAdminPage";
+import { ImportRatPage } from "../features/import-rat/ImportRatPage";
 
 const modulePages: Array<{
   path: string;
@@ -82,7 +86,11 @@ export function AppRouter() {
           <Route path="actividades" element={<ModuleAccessGate module="activities"><ActivitiesPage /></ModuleAccessGate>} />
           <Route path="actividades/nuevo" element={<RatCreatePage />} />
           <Route path="activos" element={<ModuleAccessGate module="assets"><AssetsPage /></ModuleAccessGate>} />
-          <Route path="eipd" element={<ModuleAccessGate module="eipd"><EipdPage /></ModuleAccessGate>} />
+          <Route path="eipd" element={<Navigate to="/eipd/evaluacion" replace />} />
+          <Route path="eipd/evaluacion" element={<ModuleAccessGate module="eipd-form"><EipdFormListPage /></ModuleAccessGate>} />
+          <Route path="eipd/evaluacion/:id" element={<ModuleAccessGate module="eipd-form"><EipdFormPage /></ModuleAccessGate>} />
+          <Route path="checklist-dpd" element={<ModuleAccessGate module="checklist-dpd"><ChecklistDpdListPage /></ModuleAccessGate>} />
+          <Route path="checklist-dpd/:id" element={<ModuleAccessGate module="checklist-dpd"><ChecklistDpdPage /></ModuleAccessGate>} />
           <Route path="rats" element={<ModuleAccessGate module="activities"><ActivitiesPage /></ModuleAccessGate>} />
           <Route path="rats/new" element={<RatCreatePage />} />
           <Route
@@ -98,6 +106,14 @@ export function AppRouter() {
             element={
               <ModuleAccessGate module="users">
                 <UserAdminPage />
+              </ModuleAccessGate>
+            }
+          />
+          <Route
+            path="admin/importar"
+            element={
+              <ModuleAccessGate module="import-rat">
+                <ImportRatPage />
               </ModuleAccessGate>
             }
           />

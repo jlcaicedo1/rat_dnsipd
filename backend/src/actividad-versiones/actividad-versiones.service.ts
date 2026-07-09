@@ -122,7 +122,7 @@ export class ActividadVersionesService {
         },
         mtgeEvaluacion: true,
         riesgos: true,
-        eipd: true,
+        eipdFormDoc: true,
         observacionesRevision: {
           orderBy: [{ id: 'desc' }],
         },
@@ -242,10 +242,35 @@ export class ActividadVersionesService {
     const data = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.actividadVersion.update({
         where: { id },
-        data: {
-          estadoVersion: 'EN_REVISION',
-        },
+        data: { estadoVersion: 'EN_REVISION' },
       });
+
+      // Auto-create linked EIPD when the activity requires it and none exists yet
+      if (version.requiereEipd) {
+        const existingEipd = await tx.eipdFormDoc.findUnique({
+          where: { actividadVersionId: id },
+        });
+        if (!existingEipd) {
+          const year = new Date().getFullYear();
+          const prefix = `EIPDP-${year}-`;
+          const existing = await tx.eipdFormDoc.findMany({
+            where: { codigo: { startsWith: prefix } },
+            select: { codigo: true },
+          });
+          const maxSeq = existing.reduce((max, r) => {
+            const n = parseInt(r.codigo.slice(prefix.length), 10);
+            return isNaN(n) ? max : Math.max(max, n);
+          }, 0);
+          const codigo = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+          await tx.eipdFormDoc.create({
+            data: {
+              codigo,
+              actividadVersionId: id,
+              createdById: actor!.sub,
+            },
+          });
+        }
+      }
 
       await this.audit.log(tx, {
         modulo: 'actividad-versiones',

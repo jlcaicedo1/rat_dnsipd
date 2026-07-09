@@ -51,23 +51,47 @@ export class ActividadesService {
         versiones: {
           orderBy: [{ id: 'desc' }],
           take: 1,
+          include: { baseLicitud: { select: { nombre: true } } },
         },
       },
     });
 
-    const data = actividades.map((actividad) => ({
-      id: actividad.id,
-      codigo: actividad.codigo,
-      nombre: actividad.nombre,
-      descripcion: actividad.descripcion,
-      estadoGeneral: actividad.estadoGeneral,
-      ratId: actividad.ratId,
-      rat: actividad.rat.nombre,
-      dependencia: actividad.rat.dependencia.nombre,
-      subdireccion: actividad.rat.subdireccion?.nombre ?? null,
-      versionActual: actividad.versiones[0]?.numeroVersion ?? null,
-      estadoVersionActual: actividad.versiones[0]?.estadoVersion ?? null,
-    }));
+    const data = actividades.map((actividad) => {
+      const v = actividad.versiones[0] ?? null;
+      return {
+        id: actividad.id,
+        codigo: actividad.codigo,
+        nombre: actividad.nombre,
+        descripcion: actividad.descripcion,
+        estadoGeneral: actividad.estadoGeneral,
+        ratId: actividad.ratId,
+        ratCodigo: actividad.rat.codigo,
+        rat: actividad.rat.nombre,
+        dependencia: actividad.rat.dependencia.nombre,
+        dependenciaSigla: actividad.rat.dependencia.sigla ?? null,
+        subdireccion: actividad.rat.subdireccion?.nombre ?? null,
+        macroproceso: actividad.macroproceso ?? null,
+        proceso: actividad.proceso ?? null,
+        subproceso: actividad.subproceso ?? null,
+        versionActual: v?.numeroVersion ?? null,
+        estadoVersionActual: v?.estadoVersion ?? null,
+        finalidad: v?.finalidad ?? null,
+        plazoConservacion: v?.plazoConservacion ?? null,
+        baseLicitud: v?.baseLicitud?.nombre ?? null,
+        normaAplicable: v?.normaAplicable ?? null,
+        categoriasDatos: v?.categoriasDatos ?? null,
+        categoriasTitulares: v?.categoriasTitulares ?? null,
+        accionesTratamiento: v?.accionesTratamiento ?? null,
+        numTitulares: v?.numTitulares ?? null,
+        frecuenciaTratamiento: v?.frecuenciaTratamiento ?? null,
+        alcanceGeograficoText: v?.alcanceGeograficoText ?? null,
+        origenDatos: v?.origenDatos ?? null,
+        medidaSeguridad: v?.medidaSeguridad ?? null,
+        usaPerfilamiento: v?.usaPerfilamiento ?? false,
+        requiereEipd: v?.requiereEipd ?? false,
+        fechaLevantamiento: v?.fechaLevantamiento ?? null,
+      };
+    });
 
     return { data };
   }

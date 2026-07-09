@@ -20,6 +20,8 @@ import {
   getRiskOptions,
   getRatStatusOptions,
   type ActivityRegistryRecord,
+  type RecordStatus,
+  type RiskLevel,
   type SignatureFieldState,
 } from "../rat/rat-registry-data";
 import {
@@ -36,6 +38,33 @@ import { ActivityMapModal } from "./ActivityMapModal";
 
 type DependenciasResponse = {
   data: DependencyScopeEntity[];
+};
+
+type BackendActivity = {
+  id: number;
+  ratId: number;
+  codigo: string;
+  nombre: string;
+  ratCodigo: string;
+  rat: string;
+  dependencia: string;
+  subdireccion: string | null;
+  macroproceso: string | null;
+  proceso: string | null;
+  subproceso: string | null;
+  versionActual: string | null;
+  estadoVersionActual: string | null;
+  finalidad: string | null;
+  plazoConservacion: string | null;
+  baseLicitud: string | null;
+  normaAplicable: string | null;
+  categoriasDatos: unknown;
+  categoriasTitulares: string | null;
+  accionesTratamiento: unknown;
+  origenDatos: string | null;
+  medidaSeguridad: string | null;
+  requiereEipd: boolean;
+  fechaLevantamiento: string | null;
 };
 
 export function ActivitiesPage() {
@@ -55,11 +84,28 @@ export function ActivitiesPage() {
       return response.data.data;
     },
   });
+  const actividadesBackendQuery = useQuery({
+    queryKey: ["actividades-backend"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendActivity[] }>("/actividades");
+      return response.data.data;
+    },
+    staleTime: 30_000,
+  });
   const ratRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), [workspaceVersion]);
   const activityRecords = useMemo(
     () => ratRecords.flatMap((rat) => rat.activities),
     [ratRecords],
   );
+  const backendActivities = useMemo(
+    () => (actividadesBackendQuery.data ?? []).map(mapBackendToRegistry),
+    [actividadesBackendQuery.data],
+  );
+  const mergedActivityRecords = useMemo(() => {
+    const backendCodigos = new Set(backendActivities.map((a) => a.codigo));
+    const localOnly = activityRecords.filter((a) => !backendCodigos.has(a.codigo));
+    return [...backendActivities, ...localOnly];
+  }, [backendActivities, activityRecords]);
   const assignedDependencyScope = getAssignedDependencyScope(
     user,
     dependenciasQuery.data ?? [],
@@ -67,11 +113,11 @@ export function ActivitiesPage() {
   const scopedActivityRecords = useMemo(
     () =>
       restrictToAssignedDependency
-        ? activityRecords.filter((activity) =>
+        ? mergedActivityRecords.filter((activity) =>
             matchesAssignedDependencyScope(activity, assignedDependencyScope),
           )
-        : activityRecords,
-    [activityRecords, assignedDependencyScope, restrictToAssignedDependency],
+        : mergedActivityRecords,
+    [mergedActivityRecords, assignedDependencyScope, restrictToAssignedDependency],
   );
   const dependenciaOptions = useMemo(
     () => Array.from(new Set(scopedActivityRecords.map((item) => item.dependencia))).sort(),
@@ -469,6 +515,14 @@ export function ActivitiesPage() {
           canArchive={roleCapabilities.activities.archive}
           canDuplicate={roleCapabilities.activities.duplicate}
           canUpdate={roleCapabilities.activities.update}
+          onApprove={() => {
+            persistActivityStatus(activeActivity.id, "Vigente");
+            setWorkspaceVersion((current) => current + 1);
+          }}
+          onDevolver={() => {
+            persistActivityStatus(activeActivity.id, "Borrador");
+            setWorkspaceVersion((current) => current + 1);
+          }}
           onArchive={() => {
             persistActivityStatus(activeActivity.id, "Archivado");
             setWorkspaceVersion((current) => current + 1);
@@ -497,6 +551,8 @@ function ActivityActionModal({
   canArchive,
   canDuplicate,
   canUpdate,
+  onApprove,
+  onDevolver,
   onArchive,
   onChangeStatus,
   onClose,
@@ -510,6 +566,8 @@ function ActivityActionModal({
   canArchive: boolean;
   canDuplicate: boolean;
   canUpdate: boolean;
+  onApprove: () => void;
+  onDevolver: () => void;
   onArchive: () => void;
   onChangeStatus: () => void;
   onClose: () => void;
@@ -609,7 +667,25 @@ function ActivityActionModal({
                     Duplicar
                   </button>
                 ) : null}
-                {canUpdate || canApprove ? (
+                {canApprove && activity.estado === "En revision" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="button-table-action button-table-action-primary"
+                      onClick={onApprove}
+                    >
+                      Aprobar
+                    </button>
+                    <button
+                      type="button"
+                      className="button-table-action"
+                      style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
+                      onClick={onDevolver}
+                    >
+                      Devolver
+                    </button>
+                  </>
+                ) : (canUpdate || canApprove) ? (
                   <button
                     type="button"
                     className="button-table-action button-table-action-secondary"
@@ -741,4 +817,73 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function mapEstado(raw: string | null): RecordStatus {
+  if (!raw) return "Borrador";
+  const s = raw.toUpperCase();
+  if (s === "VIGENTE") return "Vigente";
+  if (s === "EN_REVISION" || s === "REVISION") return "En revision";
+  if (s === "ARCHIVADO") return "Archivado";
+  return "Borrador";
+}
+
+function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
+  const estado = mapEstado(a.estadoVersionActual);
+  const cats = Array.isArray(a.categoriasDatos)
+    ? (a.categoriasDatos as string[]).join(", ")
+    : "";
+  const acciones = Array.isArray(a.accionesTratamiento)
+    ? (a.accionesTratamiento as string[]).join(", ")
+    : "";
+  const fecha = a.fechaLevantamiento ? a.fechaLevantamiento.slice(0, 10) : "";
+  return {
+    id: a.id,
+    ratId: a.ratId,
+    codigo: a.codigo,
+    nombre: a.nombre,
+    ratCodigo: a.ratCodigo,
+    ratNombre: a.rat,
+    dependencia: a.dependencia,
+    unidadEjecutora: a.subdireccion ?? "",
+    estado,
+    riesgo: "Bajo" as RiskLevel,
+    requiereEipd: a.requiereEipd,
+    version: a.versionActual ?? "1.0",
+    fechaActualizacion: fecha,
+    responsables: [],
+    observaciones: [],
+    pendientes: [],
+    report: {
+      codigoRat: a.ratCodigo,
+      nombreTratamiento: a.nombre,
+      dependenciaResponsable: a.dependencia,
+      procesoRelacionado: a.macroproceso ?? "",
+      subproceso: a.subproceso ?? a.proceso ?? "",
+      estado,
+      nivelRiesgo: "Bajo" as RiskLevel,
+      requiereEipd: a.requiereEipd,
+      fechaCreacion: "",
+      ultimaActualizacion: fecha,
+      finalidadEspecifica: a.finalidad ?? "",
+      baseLicitud: a.baseLicitud ?? "",
+      normaAplicable: a.normaAplicable ?? "",
+      titulares: a.categoriasTitulares ?? "",
+      categoriasDatos: cats,
+      datosSensibles: "",
+      datosNna: "",
+      origenDatos: a.origenDatos ?? "",
+      mediosRecoleccion: "",
+      accionesTratamiento: acciones,
+      plazoConservacion: a.plazoConservacion ?? "",
+      criteriosConservacion: "",
+      supresionAnonimizacion: "",
+      destinatariosInternos: "",
+      destinatariosExternos: "",
+      transferenciasInternacionales: "",
+      paisDestino: "",
+      mecanismoTransferencia: "",
+      medidasSeguridad: a.medidaSeguridad ?? "",
+    },
+  };
 }

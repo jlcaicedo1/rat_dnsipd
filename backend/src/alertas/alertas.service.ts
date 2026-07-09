@@ -20,7 +20,7 @@ export class AlertasService {
       include: {
         actividad: true,
         mtgeEvaluacion: true,
-        eipd: true,
+        eipdFormDoc: true,
         activos: true,
       },
     });
@@ -37,7 +37,7 @@ export class AlertasService {
         requiereEipd: version.requiereEipd,
         esGranEscala: version.esGranEscala,
         hasMtge: Boolean(version.mtgeEvaluacion),
-        hasEipd: Boolean(version.eipd),
+        hasEipd: Boolean(version.eipdFormDoc),
         totalActivos: version.activos.length,
       }),
     };
@@ -53,7 +53,7 @@ export class AlertasService {
               include: {
                 actividad: true,
                 mtgeEvaluacion: true,
-                eipd: true,
+                eipdFormDoc: true,
                 activos: true,
               },
               orderBy: [{ id: 'desc' }],
@@ -76,7 +76,7 @@ export class AlertasService {
           requiereEipd: version.requiereEipd,
           esGranEscala: version.esGranEscala,
           hasMtge: Boolean(version.mtgeEvaluacion),
-          hasEipd: Boolean(version.eipd),
+          hasEipd: Boolean(version.eipdFormDoc),
           totalActivos: version.activos.length,
         }),
       ),

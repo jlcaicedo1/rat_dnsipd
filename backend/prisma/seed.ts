@@ -81,6 +81,18 @@ const CATALOG_TYPE_LABELS: Record<string, string> = {
   VISIBILIDAD_INTERNET: "visibilidad desde internet",
   FUENTE_ACTIVO: "fuente del activo",
   IMPACTO_ACTIVO: "impacto del activo",
+  DATOS_PERSONALES_ACTIVO: "datos personales en el activo",
+  BAJA_PROGRAMADA_ACTIVO: "motivo de baja programada",
+  PROPIEDAD_INTELECTUAL_ACTIVO: "propiedad intelectual del activo",
+  CRITERIO_EIPD: "criterio de activacion EIPD",
+  MEDIDA_TIPO_EIPD: "tipo de medida EIPD",
+  TIPO_SALVAGUARDA_INTERNACIONAL: "salvaguarda de transferencia internacional",
+  PERIODICIDAD_REVISION: "periodicidad de revision",
+  NIVEL_RIESGO: "nivel de riesgo",
+  DIMENSION_RIESGO: "dimension del riesgo",
+  PROBABILIDAD_RIESGO: "probabilidad del riesgo",
+  TIPO_CONTROL_RIESGO: "tipo de control del riesgo",
+  CATEGORIA_AMENAZA: "categoria de amenaza",
 };
 
 const CATALOG_DOMAIN_BY_TYPE: Record<string, string> = {
@@ -95,6 +107,8 @@ const CATALOG_DOMAIN_BY_TYPE: Record<string, string> = {
   ALCANCE_GEOGRAFICO: "TRATAMIENTOS",
   RESPUESTA_BINARIA: "GENERAL",
   CATEGORIA_TERCERO: "TRATAMIENTOS",
+  TIPO_SALVAGUARDA_INTERNACIONAL: "TRATAMIENTOS",
+  PERIODICIDAD_REVISION: "GENERAL",
   PAIS: "GENERAL",
   TIPO_ACTIVO: "ACTIVOS",
   CLASIFICACION_INFORMACION: "TRATAMIENTOS",
@@ -104,6 +118,16 @@ const CATALOG_DOMAIN_BY_TYPE: Record<string, string> = {
   VISIBILIDAD_INTERNET: "ACTIVOS",
   FUENTE_ACTIVO: "ACTIVOS",
   IMPACTO_ACTIVO: "ACTIVOS",
+  DATOS_PERSONALES_ACTIVO: "ACTIVOS",
+  BAJA_PROGRAMADA_ACTIVO: "ACTIVOS",
+  PROPIEDAD_INTELECTUAL_ACTIVO: "ACTIVOS",
+  CRITERIO_EIPD: "EIPD",
+  MEDIDA_TIPO_EIPD: "EIPD",
+  NIVEL_RIESGO: "RIESGOS",
+  DIMENSION_RIESGO: "RIESGOS",
+  PROBABILIDAD_RIESGO: "RIESGOS",
+  TIPO_CONTROL_RIESGO: "RIESGOS",
+  CATEGORIA_AMENAZA: "RIESGOS",
 };
 
 const CATALOG_CODE_OVERRIDES: Record<string, string> = {
@@ -150,6 +174,88 @@ const CATALOG_CODE_OVERRIDES: Record<string, string> = {
   "IMPACTO_ACTIVO:Moderado": "MODERADO",
   "IMPACTO_ACTIVO:Mayor": "MAYOR",
   "IMPACTO_ACTIVO:Catastrofico": "CATASTROFICO",
+  // Datos personales activo
+  "DATOS_PERSONALES_ACTIVO:Si": "SI",
+  "DATOS_PERSONALES_ACTIVO:No": "NO",
+  "DATOS_PERSONALES_ACTIVO:Parcialmente": "PARCIALMENTE",
+  // Baja programada
+  "BAJA_PROGRAMADA_ACTIVO:No aplica": "NO_APLICA",
+  "BAJA_PROGRAMADA_ACTIVO:Obsolescencia tecnologica": "OBSOLESCENCIA",
+  "BAJA_PROGRAMADA_ACTIVO:Fin de vida util": "FIN_VIDA_UTIL",
+  "BAJA_PROGRAMADA_ACTIVO:Reemplazo por nuevo sistema": "REEMPLAZO",
+  "BAJA_PROGRAMADA_ACTIVO:Baja por incidente de seguridad": "INCIDENTE_SEGURIDAD",
+  "BAJA_PROGRAMADA_ACTIVO:Consolidacion de activos": "CONSOLIDACION",
+  "BAJA_PROGRAMADA_ACTIVO:Cambio de proveedor": "CAMBIO_PROVEEDOR",
+  // Propiedad intelectual
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Institucional": "INSTITUCIONAL",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Licenciado": "LICENCIADO",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Open Source": "OPEN_SOURCE",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Mixto": "MIXTO",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:No aplica": "NO_APLICA",
+  // Criterios EIPD
+  "CRITERIO_EIPD:Evaluacion sistematica o perfilamiento de titulares": "PERFILAMIENTO",
+  "CRITERIO_EIPD:Tratamiento a gran escala de datos sensibles": "GRAN_ESCALA_SENSIBLES",
+  "CRITERIO_EIPD:Vigilancia sistematica de zonas de acceso publico": "VIGILANCIA_PUBLICA",
+  "CRITERIO_EIPD:Tratamiento de datos de personas vulnerables": "PERSONAS_VULNERABLES",
+  "CRITERIO_EIPD:Uso de tecnologias innovadoras o nuevas tecnologias": "TECNOLOGIA_INNOVADORA",
+  "CRITERIO_EIPD:Transferencia internacional sin nivel de proteccion adecuado": "TRANSFERENCIA_INTERNACIONAL",
+  "CRITERIO_EIPD:Decisiones automatizadas con efectos significativos": "DECISION_AUTOMATIZADA",
+  "CRITERIO_EIPD:Cruce o combinacion de multiples conjuntos de datos": "CRUCE_DATOS",
+  // Medidas EIPD
+  "MEDIDA_TIPO_EIPD:Tecnica": "TECNICA",
+  "MEDIDA_TIPO_EIPD:Organizativa": "ORGANIZATIVA",
+  "MEDIDA_TIPO_EIPD:Legal": "LEGAL",
+  "MEDIDA_TIPO_EIPD:Fisica": "FISICA",
+  "MEDIDA_TIPO_EIPD:Preventiva": "PREVENTIVA",
+  "MEDIDA_TIPO_EIPD:Correctiva": "CORRECTIVA",
+  // Salvaguardas internacionales
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Clausulas contractuales tipo": "CLAUSULAS_TIPO",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Normas corporativas vinculantes (BCR)": "BCR",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Consentimiento explicito del titular": "CONSENTIMIENTO",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Necesidad contractual": "NECESIDAD_CONTRACTUAL",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Interes vital del titular": "INTERES_VITAL",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Interes publico importante": "INTERES_PUBLICO",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Decision de adecuacion de la SDP": "ADECUACION_SDP",
+  // Periodicidad
+  "PERIODICIDAD_REVISION:Anual": "ANUAL",
+  "PERIODICIDAD_REVISION:Semestral": "SEMESTRAL",
+  "PERIODICIDAD_REVISION:Trimestral": "TRIMESTRAL",
+  "PERIODICIDAD_REVISION:Mensual": "MENSUAL",
+  "PERIODICIDAD_REVISION:Bienal": "BIENAL",
+  // Nivel riesgo
+  "NIVEL_RIESGO:Bajo": "BAJO",
+  "NIVEL_RIESGO:Medio": "MEDIO",
+  "NIVEL_RIESGO:Alto": "ALTO",
+  "NIVEL_RIESGO:Critico": "CRITICO",
+  // Dimension riesgo
+  "DIMENSION_RIESGO:Confidencialidad": "CONFIDENCIALIDAD",
+  "DIMENSION_RIESGO:Integridad": "INTEGRIDAD",
+  "DIMENSION_RIESGO:Disponibilidad": "DISPONIBILIDAD",
+  "DIMENSION_RIESGO:Privacidad": "PRIVACIDAD",
+  // Probabilidad riesgo
+  "PROBABILIDAD_RIESGO:1 - Muy Baja": "MUY_BAJA",
+  "PROBABILIDAD_RIESGO:2 - Baja": "BAJA",
+  "PROBABILIDAD_RIESGO:3 - Media": "MEDIA",
+  "PROBABILIDAD_RIESGO:4 - Alta": "ALTA",
+  "PROBABILIDAD_RIESGO:5 - Muy Alta": "MUY_ALTA",
+  // Tipo control riesgo
+  "TIPO_CONTROL_RIESGO:Preventivo": "PREVENTIVO",
+  "TIPO_CONTROL_RIESGO:Detectivo": "DETECTIVO",
+  "TIPO_CONTROL_RIESGO:Correctivo": "CORRECTIVO",
+  "TIPO_CONTROL_RIESGO:Transferencia": "TRANSFERENCIA",
+  "TIPO_CONTROL_RIESGO:Aceptacion": "ACEPTACION",
+  "TIPO_CONTROL_RIESGO:Eliminacion": "ELIMINACION",
+  // Categoria amenaza
+  "CATEGORIA_AMENAZA:Acceso no autorizado": "ACCESO_NO_AUTORIZADO",
+  "CATEGORIA_AMENAZA:Perdida o robo de informacion": "PERDIDA_ROBO",
+  "CATEGORIA_AMENAZA:Modificacion no autorizada": "MODIFICACION_NO_AUTORIZADA",
+  "CATEGORIA_AMENAZA:Denegacion de servicio": "DENEGACION_SERVICIO",
+  "CATEGORIA_AMENAZA:Divulgacion no intencionada": "DIVULGACION",
+  "CATEGORIA_AMENAZA:Error humano": "ERROR_HUMANO",
+  "CATEGORIA_AMENAZA:Falla tecnologica": "FALLA_TECNOLOGICA",
+  "CATEGORIA_AMENAZA:Desastre natural o fisico": "DESASTRE_NATURAL",
+  "CATEGORIA_AMENAZA:Ataque externo (malware, phishing)": "ATAQUE_EXTERNO",
+  "CATEGORIA_AMENAZA:Incumplimiento normativo": "INCUMPLIMIENTO_NORMATIVO",
 };
 
 const CATALOG_DESCRIPTION_OVERRIDES: Record<string, string> = {
@@ -221,6 +327,158 @@ const CATALOG_DESCRIPTION_OVERRIDES: Record<string, string> = {
     "Afectacion alta sobre la operacion, la privacidad o la disponibilidad institucional.",
   "IMPACTO_ACTIVO:Catastrofico":
     "Afectacion critica con alto potencial de interrupcion o dano severo.",
+  // Datos personales en el activo
+  "DATOS_PERSONALES_ACTIVO:Si":
+    "El activo almacena, procesa o transmite datos personales de forma directa.",
+  "DATOS_PERSONALES_ACTIVO:No":
+    "El activo no tiene relacion con datos personales.",
+  "DATOS_PERSONALES_ACTIVO:Parcialmente":
+    "El activo procesa datos personales de forma indirecta o en componentes especificos.",
+  // Baja programada
+  "BAJA_PROGRAMADA_ACTIVO:No aplica":
+    "El activo no tiene fecha de baja programada.",
+  "BAJA_PROGRAMADA_ACTIVO:Obsolescencia tecnologica":
+    "El activo sera dado de baja por quedar tecnologicamente obsoleto.",
+  "BAJA_PROGRAMADA_ACTIVO:Fin de vida util":
+    "El activo alcanza el termino de su ciclo de vida operativa.",
+  "BAJA_PROGRAMADA_ACTIVO:Reemplazo por nuevo sistema":
+    "El activo sera sustituido por una nueva solucion tecnologica.",
+  "BAJA_PROGRAMADA_ACTIVO:Baja por incidente de seguridad":
+    "El activo sera dado de baja como consecuencia de un incidente de seguridad.",
+  "BAJA_PROGRAMADA_ACTIVO:Consolidacion de activos":
+    "El activo se fusiona con otro para reducir la superficie de riesgo.",
+  "BAJA_PROGRAMADA_ACTIVO:Cambio de proveedor":
+    "El activo sera reemplazado por la migracion a otro proveedor de servicio.",
+  // Propiedad intelectual
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Institucional":
+    "Activo desarrollado o creado por la propia institucion.",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Licenciado":
+    "Activo cubierto por licencia comercial de un tercero.",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Open Source":
+    "Activo basado en codigo abierto bajo licencia publica reconocida.",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:Mixto":
+    "Activo que combina componentes propietarios y de codigo abierto.",
+  "PROPIEDAD_INTELECTUAL_ACTIVO:No aplica":
+    "No aplica propiedad intelectual formal al activo.",
+  // Criterios EIPD (LOPDP Art. 60 + WP29)
+  "CRITERIO_EIPD:Evaluacion sistematica o perfilamiento de titulares":
+    "Tratamiento que evalua, clasifica o predice aspectos personales de forma automatizada.",
+  "CRITERIO_EIPD:Tratamiento a gran escala de datos sensibles":
+    "Procesamiento masivo de categorias especiales de datos (salud, biometricos, sindicales, menores, etc.).",
+  "CRITERIO_EIPD:Vigilancia sistematica de zonas de acceso publico":
+    "Monitoreo de espacios publicos mediante video, sensores u otros medios continuos.",
+  "CRITERIO_EIPD:Tratamiento de datos de personas vulnerables":
+    "Tratamiento que involucra menores de edad, pacientes, personas con discapacidad u otras poblaciones vulnerables.",
+  "CRITERIO_EIPD:Uso de tecnologias innovadoras o nuevas tecnologias":
+    "Tratamiento que emplea inteligencia artificial, biometria, IoT u otras tecnologias emergentes.",
+  "CRITERIO_EIPD:Transferencia internacional sin nivel de proteccion adecuado":
+    "Flujo de datos personales hacia paises o entidades sin reconocimiento de nivel adecuado de proteccion.",
+  "CRITERIO_EIPD:Decisiones automatizadas con efectos significativos":
+    "Tratamiento que produce decisiones automaticas con efecto juridico o significativo sobre el titular.",
+  "CRITERIO_EIPD:Cruce o combinacion de multiples conjuntos de datos":
+    "Vinculacion de bases de datos de distintos origenes que supera la expectativa original del titular.",
+  // Medidas EIPD
+  "MEDIDA_TIPO_EIPD:Tecnica":
+    "Controles tecnologicos: cifrado, seudonimizacion, control de acceso, anonimizacion, etc.",
+  "MEDIDA_TIPO_EIPD:Organizativa":
+    "Politicas, procedimientos, capacitacion y gestion de acceso basados en roles.",
+  "MEDIDA_TIPO_EIPD:Legal":
+    "Clausulas contractuales, acuerdos de confidencialidad, normativa interna y compromisos legales.",
+  "MEDIDA_TIPO_EIPD:Fisica":
+    "Controles de seguridad fisica: acceso a instalaciones, custodia de equipos, destruccion segura.",
+  "MEDIDA_TIPO_EIPD:Preventiva":
+    "Medidas orientadas a evitar que el riesgo se materialice antes del tratamiento.",
+  "MEDIDA_TIPO_EIPD:Correctiva":
+    "Medidas de respuesta y remediacion una vez detectado un incidente o riesgo materializado.",
+  // Salvaguardas internacionales
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Clausulas contractuales tipo":
+    "Contratos que incluyen clausulas estandar aprobadas por la autoridad de proteccion de datos.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Normas corporativas vinculantes (BCR)":
+    "Politicas internas vinculantes aprobadas para grupos empresariales multinacionales.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Consentimiento explicito del titular":
+    "El titular ha autorizado expresamente la transferencia internacional de sus datos.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Necesidad contractual":
+    "La transferencia es necesaria para la ejecucion o cumplimiento de un contrato con el titular.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Interes vital del titular":
+    "La transferencia protege intereses vitales del titular cuando no puede prestar consentimiento.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Interes publico importante":
+    "La transferencia responde a un interes publico reconocido legalmente.",
+  "TIPO_SALVAGUARDA_INTERNACIONAL:Decision de adecuacion de la SDP":
+    "El pais de destino cuenta con decision de nivel adecuado emitida por la Superintendencia de Datos Personales.",
+  // Periodicidad
+  "PERIODICIDAD_REVISION:Anual":
+    "Revision programada con frecuencia anual.",
+  "PERIODICIDAD_REVISION:Semestral":
+    "Revision programada con frecuencia semestral (cada 6 meses).",
+  "PERIODICIDAD_REVISION:Trimestral":
+    "Revision programada con frecuencia trimestral (cada 3 meses).",
+  "PERIODICIDAD_REVISION:Mensual":
+    "Revision programada con frecuencia mensual.",
+  "PERIODICIDAD_REVISION:Bienal":
+    "Revision programada con frecuencia bienal (cada 2 anos).",
+  // Nivel riesgo
+  "NIVEL_RIESGO:Bajo":
+    "Riesgo bajo o aceptable. No requiere tratamiento inmediato; seguimiento periodico.",
+  "NIVEL_RIESGO:Medio":
+    "Riesgo moderado. Requiere plan de tratamiento y seguimiento activo.",
+  "NIVEL_RIESGO:Alto":
+    "Riesgo elevado. Requiere tratamiento prioritario y controles reforzados.",
+  "NIVEL_RIESGO:Critico":
+    "Riesgo critico. Requiere accion inmediata; puede implicar suspension del tratamiento.",
+  // Dimension riesgo
+  "DIMENSION_RIESGO:Confidencialidad":
+    "Riesgo de exposicion no autorizada de informacion o datos personales.",
+  "DIMENSION_RIESGO:Integridad":
+    "Riesgo de alteracion, corrupcion o modificacion no autorizada de datos.",
+  "DIMENSION_RIESGO:Disponibilidad":
+    "Riesgo de interrupcion del acceso a sistemas, servicios o datos.",
+  "DIMENSION_RIESGO:Privacidad":
+    "Riesgo de afectacion a los derechos de proteccion de datos personales de los titulares.",
+  // Probabilidad riesgo
+  "PROBABILIDAD_RIESGO:1 - Muy Baja":
+    "Evento altamente improbable. Ocurrencia historica nula o muy remota.",
+  "PROBABILIDAD_RIESGO:2 - Baja":
+    "Evento poco probable. Ha ocurrido en casos excepcionales.",
+  "PROBABILIDAD_RIESGO:3 - Media":
+    "Evento posible. Ha ocurrido en la institucion o en el sector.",
+  "PROBABILIDAD_RIESGO:4 - Alta":
+    "Evento probable. Existe evidencia frecuente de ocurrencia.",
+  "PROBABILIDAD_RIESGO:5 - Muy Alta":
+    "Evento casi certero. Se espera que ocurra en condiciones normales.",
+  // Tipo control riesgo
+  "TIPO_CONTROL_RIESGO:Preventivo":
+    "Control orientado a impedir que el riesgo se materialice.",
+  "TIPO_CONTROL_RIESGO:Detectivo":
+    "Control orientado a identificar la materializacion del riesgo a tiempo.",
+  "TIPO_CONTROL_RIESGO:Correctivo":
+    "Control orientado a reducir el impacto tras la materializacion del riesgo.",
+  "TIPO_CONTROL_RIESGO:Transferencia":
+    "Estrategia que traslada el riesgo a un tercero (seguro, contrato, externalización).",
+  "TIPO_CONTROL_RIESGO:Aceptacion":
+    "Decision de asumir el riesgo como tolerable dentro del apetito institucional.",
+  "TIPO_CONTROL_RIESGO:Eliminacion":
+    "Estrategia que elimina la fuente del riesgo suprimiendo la actividad que lo genera.",
+  // Categoria amenaza
+  "CATEGORIA_AMENAZA:Acceso no autorizado":
+    "Ingreso o uso ilegitimo de sistemas, redes o repositorios de datos.",
+  "CATEGORIA_AMENAZA:Perdida o robo de informacion":
+    "Perdida fisica o logica de activos de informacion o datos personales.",
+  "CATEGORIA_AMENAZA:Modificacion no autorizada":
+    "Alteracion indebida de datos, registros o configuraciones del sistema.",
+  "CATEGORIA_AMENAZA:Denegacion de servicio":
+    "Interrupcion intencional o accidental de la disponibilidad de servicios.",
+  "CATEGORIA_AMENAZA:Divulgacion no intencionada":
+    "Exposicion accidental de informacion sensible o datos personales.",
+  "CATEGORIA_AMENAZA:Error humano":
+    "Falla derivada de actuaciones involuntarias de usuarios internos.",
+  "CATEGORIA_AMENAZA:Falla tecnologica":
+    "Averia de hardware, software o infraestructura tecnologica.",
+  "CATEGORIA_AMENAZA:Desastre natural o fisico":
+    "Evento fisico externo que afecta instalaciones o equipos (inundacion, sismo, incendio).",
+  "CATEGORIA_AMENAZA:Ataque externo (malware, phishing)":
+    "Amenaza proveniente de actores externos mediante tecnicas de ataque cibernetico.",
+  "CATEGORIA_AMENAZA:Incumplimiento normativo":
+    "Riesgo derivado del incumplimiento de la LOPDP u otras normas aplicables.",
 };
 
 const MASTER_CATALOGS: CatalogSeedItem[] = [
@@ -314,14 +572,63 @@ const MASTER_CATALOGS: CatalogSeedItem[] = [
     "Destinatario internacional",
   ]),
   ...buildCatalogSeed("PAIS", [
+    // América del Sur
     "Ecuador",
     "Colombia",
-    "Estados Unidos",
-    "Espana",
-    "Canada",
-    "Alemania",
     "Brasil",
     "Chile",
+    "Argentina",
+    "Peru",
+    "Bolivia",
+    "Venezuela",
+    "Uruguay",
+    "Paraguay",
+    "Guyana",
+    "Surinam",
+    // América Central y Caribe
+    "Mexico",
+    "Panama",
+    "Costa Rica",
+    "Guatemala",
+    "Honduras",
+    "El Salvador",
+    "Nicaragua",
+    "Cuba",
+    "Republica Dominicana",
+    "Haiti",
+    // América del Norte
+    "Estados Unidos",
+    "Canada",
+    // Europa — con decisión de adecuación o principales destinos
+    "Espana",
+    "Alemania",
+    "Francia",
+    "Italia",
+    "Reino Unido",
+    "Portugal",
+    "Paises Bajos",
+    "Belgica",
+    "Suiza",
+    "Austria",
+    "Suecia",
+    "Noruega",
+    "Dinamarca",
+    "Finlandia",
+    "Polonia",
+    "Irlanda",
+    "Luxemburgo",
+    // Asia-Pacifico
+    "Japon",
+    "Australia",
+    "Nueva Zelanda",
+    "Corea del Sur",
+    "India",
+    "China",
+    "Singapur",
+    // Medio Oriente y Africa
+    "Israel",
+    "Emiratos Arabes Unidos",
+    "Sudafrica",
   ]),
   ...buildCatalogSeed("TIPO_ACTIVO", [
     "Aplicacion (Web)",
@@ -369,6 +676,110 @@ const MASTER_CATALOGS: CatalogSeedItem[] = [
     "Moderado",
     "Mayor",
     "Catastrofico",
+  ]),
+
+  // ── Activos de Información — tipos faltantes ──────────────────────────────
+  ...buildCatalogSeed("DATOS_PERSONALES_ACTIVO", [
+    "Si",
+    "No",
+    "Parcialmente",
+  ]),
+  ...buildCatalogSeed("BAJA_PROGRAMADA_ACTIVO", [
+    "No aplica",
+    "Obsolescencia tecnologica",
+    "Fin de vida util",
+    "Reemplazo por nuevo sistema",
+    "Baja por incidente de seguridad",
+    "Consolidacion de activos",
+    "Cambio de proveedor",
+  ]),
+  ...buildCatalogSeed("PROPIEDAD_INTELECTUAL_ACTIVO", [
+    "Institucional",
+    "Licenciado",
+    "Open Source",
+    "Mixto",
+    "No aplica",
+  ]),
+
+  // ── EIPD ─────────────────────────────────────────────────────────────────
+  ...buildCatalogSeed("CRITERIO_EIPD", [
+    "Evaluacion sistematica o perfilamiento de titulares",
+    "Tratamiento a gran escala de datos sensibles",
+    "Vigilancia sistematica de zonas de acceso publico",
+    "Tratamiento de datos de personas vulnerables",
+    "Uso de tecnologias innovadoras o nuevas tecnologias",
+    "Transferencia internacional sin nivel de proteccion adecuado",
+    "Decisiones automatizadas con efectos significativos",
+    "Cruce o combinacion de multiples conjuntos de datos",
+  ]),
+  ...buildCatalogSeed("MEDIDA_TIPO_EIPD", [
+    "Tecnica",
+    "Organizativa",
+    "Legal",
+    "Fisica",
+    "Preventiva",
+    "Correctiva",
+  ]),
+
+  // ── Transferencias internacionales (Actividades) ──────────────────────────
+  ...buildCatalogSeed("TIPO_SALVAGUARDA_INTERNACIONAL", [
+    "Clausulas contractuales tipo",
+    "Normas corporativas vinculantes (BCR)",
+    "Consentimiento explicito del titular",
+    "Necesidad contractual",
+    "Interes vital del titular",
+    "Interes publico importante",
+    "Decision de adecuacion de la SDP",
+  ]),
+
+  // ── General / Actividades ─────────────────────────────────────────────────
+  ...buildCatalogSeed("PERIODICIDAD_REVISION", [
+    "Anual",
+    "Semestral",
+    "Trimestral",
+    "Mensual",
+    "Bienal",
+  ]),
+
+  // ── Riesgos (catálogos listos, módulo pendiente) ─────────────────────────
+  ...buildCatalogSeed("NIVEL_RIESGO", [
+    "Bajo",
+    "Medio",
+    "Alto",
+    "Critico",
+  ]),
+  ...buildCatalogSeed("DIMENSION_RIESGO", [
+    "Confidencialidad",
+    "Integridad",
+    "Disponibilidad",
+    "Privacidad",
+  ]),
+  ...buildCatalogSeed("PROBABILIDAD_RIESGO", [
+    "1 - Muy Baja",
+    "2 - Baja",
+    "3 - Media",
+    "4 - Alta",
+    "5 - Muy Alta",
+  ]),
+  ...buildCatalogSeed("TIPO_CONTROL_RIESGO", [
+    "Preventivo",
+    "Detectivo",
+    "Correctivo",
+    "Transferencia",
+    "Aceptacion",
+    "Eliminacion",
+  ]),
+  ...buildCatalogSeed("CATEGORIA_AMENAZA", [
+    "Acceso no autorizado",
+    "Perdida o robo de informacion",
+    "Modificacion no autorizada",
+    "Denegacion de servicio",
+    "Divulgacion no intencionada",
+    "Error humano",
+    "Falla tecnologica",
+    "Desastre natural o fisico",
+    "Ataque externo (malware, phishing)",
+    "Incumplimiento normativo",
   ]),
 ];
 

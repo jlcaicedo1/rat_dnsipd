@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -69,6 +70,7 @@ model Rat {
   fechaProximaRevision DateTime?
   dependenciaId        Int
   subdireccionId       Int?
+  responsable          String?
   actividades          ActividadTratamiento[]
   dependencia          OrgDependencia         @relation(fields: [dependenciaId], references: [id])
   subdireccion         OrgSubdireccion?       @relation(fields: [subdireccionId], references: [id])
@@ -93,6 +95,9 @@ model ActividadTratamiento {
   descripcion   String?
   ratId         Int
   estadoGeneral String             @default("EN_CONSTRUCCION")
+  macroproceso  String?
+  proceso       String?
+  subproceso    String?
   rat           Rat                @relation(fields: [ratId], references: [id])
   versiones     ActividadVersion[]
 
@@ -100,26 +105,42 @@ model ActividadTratamiento {
 }
 
 model ActividadVersion {
-  id                   Int                   @id @default(autoincrement())
-  numeroVersion        String
-  estadoVersion        String                @default("BORRADOR")
-  finalidad            String?
-  plazoConservacion    String?
-  actividadId          Int
-  baseLicitudId        Int?
-  esGranEscala         Boolean               @default(false)
-  fechaProximaRevision DateTime?
-  motivoActualizacion  String?
-  observacionLicitud   String?
-  puntajeMtge          Float?
-  requiereEipd         Boolean               @default(false)
-  activos              ActividadActivo[]
-  actividad            ActividadTratamiento  @relation(fields: [actividadId], references: [id])
-  baseLicitud          Catalogo?             @relation(fields: [baseLicitudId], references: [id])
-  eipd                 Eipd?
-  mtgeEvaluacion       MtgeEvaluacion?
-  observacionesRevision RevisionObservacion[]
-  riesgos              RiesgoEvaluacion[]
+  id                       Int                   @id @default(autoincrement())
+  numeroVersion            String
+  estadoVersion            String                @default("BORRADOR")
+  finalidad                String?
+  plazoConservacion        String?
+  actividadId              Int
+  baseLicitudId            Int?
+  esGranEscala             Boolean               @default(false)
+  fechaProximaRevision     DateTime?
+  motivoActualizacion      String?
+  observacionLicitud       String?
+  puntajeMtge              Float?
+  requiereEipd             Boolean               @default(false)
+  // Campos extendidos para matriz de tratamiento
+  categoriasTitulares      String?
+  categoriasDatos          Json?
+  accionesTratamiento      Json?
+  numTitulares             String?
+  frecuenciaTratamiento    String?
+  permanenciaTratamiento   String?
+  alcanceGeograficoText    String?
+  origenDatos              String?
+  medidaSeguridad          String?
+  normaAplicable           String?
+  usaPerfilamiento         Boolean               @default(false)
+  descripcionPerfilamiento String?
+  terceros                 Json?
+  activosImport            Json?
+  fechaLevantamiento       DateTime?
+  activos                  ActividadActivo[]
+  actividad                ActividadTratamiento  @relation(fields: [actividadId], references: [id])
+  baseLicitud              Catalogo?             @relation(fields: [baseLicitudId], references: [id])
+  eipdFormDoc              EipdFormDoc?
+  mtgeEvaluacion           MtgeEvaluacion?
+  observacionesRevision    RevisionObservacion[]
+  riesgos                  RiesgoEvaluacion[]
 
   @@unique([actividadId, numeroVersion])
 }
@@ -274,19 +295,49 @@ model AuditLog {
   metadata       Json?
 }
 
-model Eipd {
-  id                     Int              @id @default(autoincrement())
-  codigo                 String           @unique
-  actividadVersionId     Int              @unique
-  conclusion             String?
-  createdAt              DateTime         @default(now())
-  estado                 String           @default("PRE_EVALUACION")
-  fechaEvaluacion        DateTime?
-  medidasMitigacion      String?
-  requiereConsultaPrevia Boolean          @default(false)
-  resumen                String?
-  updatedAt              DateTime         @updatedAt
-  actividadVersion       ActividadVersion @relation(fields: [actividadVersionId], references: [id])
+model EipdFormDoc {
+  id                 Int               @id @default(autoincrement())
+  codigo             String            @unique
+  titulo             String?
+  estado             String            @default("BORRADOR")
+  formFields         Json?
+  s2State            Json?
+  s3State            Json?
+  datosRows          Json?
+  activosRows        Json?
+  s4Rows             Json?
+  s5Rows             Json?
+  s6Rows             Json?
+  createdById        Int
+  updatedById        Int?
+  dependenciaId      Int?
+  actividadVersionId Int?              @unique
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  deletedAt          DateTime?
+  actividadVersion   ActividadVersion? @relation(fields: [actividadVersionId], references: [id])
+
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
+model ChecklistDpd {
+  id           Int       @id @default(autoincrement())
+  codigo       String    @unique
+  titulo       String?
+  estado       String    @default("BORRADOR")
+  formData     Json?
+  controles    Json?
+  planRows     Json?
+  createdById  Int
+  updatedById  Int?
+  dependenciaId Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([createdById])
+  @@index([deletedAt])
 }
 
 model OrgDependencia {

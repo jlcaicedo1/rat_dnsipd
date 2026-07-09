@@ -127,16 +127,12 @@ export class MtgeService {
         },
       });
 
-      const hasEipd = await tx.eipd.count({
-        where: { actividadVersionId },
-      });
-
       await tx.actividadVersion.update({
         where: { id: actividadVersionId },
         data: {
           puntajeMtge: null,
           esGranEscala: false,
-          requiereEipd: hasHighRisk > 0 || hasEipd > 0,
+          requiereEipd: hasHighRisk > 0,
         },
       });
 

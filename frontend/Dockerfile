@@ -6,10 +6,14 @@ COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 RUN npm ci --workspace frontend --include-workspace-root
+# Install Linux-specific rollup binary absent from Windows-generated lockfile
+RUN cd /tmp && npm install @rollup/rollup-linux-x64-musl --no-save 2>/dev/null && \
+    mkdir -p /app/node_modules/@rollup && \
+    cp -r /tmp/node_modules/@rollup/rollup-linux-x64-musl /app/node_modules/@rollup/ && \
+    rm -rf /tmp/node_modules
 
 FROM deps AS development
 ENV NODE_ENV=development
-COPY frontend frontend
 EXPOSE 5173
 CMD ["npm", "--workspace", "frontend", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
 

@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
+import iessLogo from "../assets/iess-logo.png";
 
 const navSections = [
   {
@@ -22,7 +23,8 @@ const navSections = [
     items: [
       { to: "/mtge", label: "Evaluacion MTGE", icon: "mtge" },
       { to: "/riesgos", label: "Riesgos", icon: "risks" },
-      { to: "/eipd", label: "EIPD", icon: "eipd" },
+      { to: "/eipd/evaluacion", label: "EIPD", icon: "eipd-form" },
+      { to: "/checklist-dpd", label: "Diseño Defecto", icon: "checklist" },
     ],
   },
   {
@@ -33,6 +35,7 @@ const navSections = [
       { to: "/catalogos", label: "Catalogos", icon: "catalogs" },
       { to: "/estructura-organica", label: "Estructura organica", icon: "organization" },
       { to: "/usuarios", label: "Usuarios", icon: "users" },
+      { to: "/admin/importar", label: "Importar Matriz RAT", icon: "import-rat" },
     ],
   },
 ] as const satisfies Array<{
@@ -98,7 +101,8 @@ export function MainLayout() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand-text">
-            <strong>DNSIPD</strong>
+            <img src={iessLogo} alt="IESS" className="sidebar-logo" />
+            <img src={iessLogo} alt="IESS" className="sidebar-logo-icon" />
           </div>
           <button
             type="button"
@@ -156,6 +160,13 @@ export function MainLayout() {
         </div>
       </aside>
       <main className="content">
+        <div className="print-header" aria-hidden="true">
+          <img src={iessLogo} alt="IESS — Instituto Ecuatoriano de Seguridad Social" />
+          <div className="print-header-text">
+            <strong>Instituto Ecuatoriano de Seguridad Social</strong>
+            <small>Direccion Nacional de Tecnologias de la Informacion · Sistema de Proteccion de Datos</small>
+          </div>
+        </div>
         <div className="mobile-topbar">
           <div className="mobile-topbar-brand">
             <strong>DNSIPD</strong>
@@ -196,6 +207,10 @@ function mapModuleFromRoute(route: string) {
       return "risks";
     case "/eipd":
       return "eipd";
+    case "/eipd/evaluacion":
+      return "eipd-form";
+    case "/checklist-dpd":
+      return "checklist-dpd";
     case "/reportes":
       return "reports";
     case "/audit":
@@ -206,6 +221,8 @@ function mapModuleFromRoute(route: string) {
       return "organization";
     case "/usuarios":
       return "users";
+    case "/admin/importar":
+      return "import-rat";
     default:
       return "dashboard";
   }

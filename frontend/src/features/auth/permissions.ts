@@ -11,11 +11,14 @@ export type AppModuleKey =
   | "mtge"
   | "risks"
   | "eipd"
+  | "eipd-form"
+  | "checklist-dpd"
   | "reports"
   | "audit"
   | "catalogs"
   | "organization"
-  | "users";
+  | "users"
+  | "import-rat";
 
 type ModulePermissionMap = Record<AppModuleKey, boolean>;
 
@@ -28,6 +31,16 @@ type CrudPermissionSet = {
   approve: boolean;
 };
 
+type FormDocPermissions = {
+  create: boolean;
+  edit: boolean;
+  sendToReview: boolean;
+  approve: boolean;
+  devolver: boolean;
+  close: boolean;
+  delete: boolean;
+};
+
 type RoleCapabilities = {
   role: AppRole;
   label: string;
@@ -37,6 +50,8 @@ type RoleCapabilities = {
     update: boolean;
     approve: boolean;
   };
+  eipdForm: FormDocPermissions;
+  checklistDpd: FormDocPermissions;
   assets: CrudPermissionSet & {
     detail: boolean;
   };
@@ -87,16 +102,20 @@ const BASE_MODULES: ModulePermissionMap = {
   mtge: true,
   risks: true,
   eipd: true,
+  "eipd-form": true,
+  "checklist-dpd": true,
   reports: true,
   audit: false,
   catalogs: false,
   organization: false,
   users: false,
+  "import-rat": false,
 };
 
 const REVIEWER_MODULES: ModulePermissionMap = {
   ...BASE_MODULES,
   organization: true,
+  "import-rat": false,
 };
 
 const FUNCTIONAL_ADMIN_MODULES: ModulePermissionMap = {
@@ -106,16 +125,20 @@ const FUNCTIONAL_ADMIN_MODULES: ModulePermissionMap = {
   mtge: true,
   risks: true,
   eipd: true,
+  "eipd-form": true,
+  "checklist-dpd": true,
   reports: true,
   audit: true,
   catalogs: true,
   organization: true,
   users: false,
+  "import-rat": true,
 };
 
 const TECHNICAL_ADMIN_MODULES: ModulePermissionMap = {
   ...FUNCTIONAL_ADMIN_MODULES,
   users: true,
+  "import-rat": false,
 };
 
 export function normalizeAppRole(role?: string | null): AppRole {
@@ -166,6 +189,8 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: false,
           approve: false,
         },
+        eipdForm: { create: false, edit: false, sendToReview: false, approve: false, devolver: false, close: false, delete: true },
+        checklistDpd: { create: false, edit: false, sendToReview: false, approve: false, devolver: false, close: false, delete: true },
         assets: {
           ...NO_CRUD,
           detail: true,
@@ -214,6 +239,8 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: false,
           approve: false,
         },
+        eipdForm: { create: false, edit: false, sendToReview: false, approve: false, devolver: false, close: false, delete: false },
+        checklistDpd: { create: false, edit: false, sendToReview: false, approve: false, devolver: false, close: false, delete: false },
         assets: {
           ...NO_CRUD,
           update: true,
@@ -262,6 +289,8 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: true,
           approve: true,
         },
+        eipdForm: { create: false, edit: false, sendToReview: false, approve: true, devolver: true, close: true, delete: false },
+        checklistDpd: { create: false, edit: false, sendToReview: false, approve: true, devolver: true, close: true, delete: false },
         assets: {
           ...NO_CRUD,
           update: true,
@@ -312,6 +341,8 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: false,
           approve: false,
         },
+        eipdForm: { create: true, edit: true, sendToReview: true, approve: false, devolver: false, close: false, delete: true },
+        checklistDpd: { create: true, edit: true, sendToReview: true, approve: false, devolver: false, close: false, delete: true },
         assets: {
           create: true,
           read: true,
