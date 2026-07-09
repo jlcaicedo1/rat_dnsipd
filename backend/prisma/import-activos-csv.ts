@@ -184,6 +184,9 @@ async function main() {
         propietarioActivo: normalizeTitleText(
           normalizeCell(getCsvCell(row, headers, 'propietario_activo')),
         ),
+        dependenciaNombreFuente: normalizeTitleText(
+          normalizeCell(getCsvCell(row, headers, 'propietario_activo')),
+        ),
         unidadPropietariaActivo: normalizeTitleText(
           normalizeCell(getCsvCell(row, headers, 'unidad_propietaria')),
         ),
