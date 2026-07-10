@@ -72,6 +72,10 @@ export function MainLayout() {
       "rat_dnsipd_sidebar_collapsed",
       String(isSidebarCollapsed),
     );
+    document.documentElement.style.setProperty(
+      "--sidebar-w",
+      isSidebarCollapsed ? "84px" : "296px",
+    );
   }, [isSidebarCollapsed]);
 
   const shellClassName = [
