@@ -7,8 +7,10 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { AuthorizationScopeService } from '../auth/authorization-scope.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateActivoDto } from './dto/create-activo.dto';
+import { DisableActivoDto } from './dto/disable-activo.dto';
 import { QueryActivoDto } from './dto/query-activo.dto';
 import { UpdateActivoDto } from './dto/update-activo.dto';
 import {
@@ -39,6 +41,7 @@ export class ActivosService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly authz: AuthorizationScopeService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   async findAll(query: QueryActivoDto, actor: AuthenticatedUser) {
@@ -264,7 +267,9 @@ export class ActivosService {
         accion: 'UPDATE',
         actor: actor?.username,
         actorRole: actor?.role,
-        descripcion: 'Actualizacion de activo de informacion',
+        descripcion: dto.motivo
+          ? `Actualizacion de activo. Motivo: ${dto.motivo}`
+          : 'Actualizacion de activo de informacion',
         beforeData: activo,
         afterData: updated,
       });
@@ -272,10 +277,24 @@ export class ActivosService {
       return updated;
     });
 
+    if (dto.activo === true && !activo.activo) {
+      await this.notificaciones.crear({
+        de: actor?.username ?? 'sistema',
+        tipo: 'ACTIVO_REACTIVADO',
+        modulo: 'activos',
+        entidadId: id,
+        entidadCodigo: data.codigo,
+        titulo: 'Activo reactivado',
+        mensaje: `El activo "${data.nombre}" fue reactivado.`,
+        motivo: dto.motivo,
+        paraRol: 'REVIEWER',
+      });
+    }
+
     return { data };
   }
 
-  async disable(id: number, actor?: AuthenticatedUser) {
+  async disable(id: number, dto: DisableActivoDto, actor?: AuthenticatedUser) {
     this.authz.assertCanManageAssets(actor);
     const existing = await this.ensureExists(id, actor);
 
@@ -292,12 +311,26 @@ export class ActivosService {
         accion: 'DISABLE',
         actor: actor?.username,
         actorRole: actor?.role,
-        descripcion: 'Baja logica de activo de informacion',
+        descripcion: dto.motivo
+          ? `Baja logica de activo. Motivo: ${dto.motivo}`
+          : 'Baja logica de activo de informacion',
         beforeData: existing,
         afterData: disabled,
       });
 
       return disabled;
+    });
+
+    await this.notificaciones.crear({
+      de: actor?.username ?? 'sistema',
+      tipo: 'ACTIVO_BAJA',
+      modulo: 'activos',
+      entidadId: id,
+      entidadCodigo: data.codigo,
+      titulo: 'Activo dado de baja',
+      mensaje: `El activo "${data.nombre}" fue dado de baja.`,
+      motivo: dto.motivo,
+      paraRol: 'REVIEWER',
     });
 
     return { data };

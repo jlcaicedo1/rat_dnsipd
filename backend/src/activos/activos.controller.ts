@@ -15,6 +15,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActivosService } from './activos.service';
 import { CreateActivoDto } from './dto/create-activo.dto';
+import { DisableActivoDto } from './dto/disable-activo.dto';
 import { QueryActivoDto } from './dto/query-activo.dto';
 import { UpdateActivoDto } from './dto/update-activo.dto';
 
@@ -60,18 +61,20 @@ export class ActivosController {
   @UseGuards(JwtAuthGuard)
   disable(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DisableActivoDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.activosService.disable(id, user);
+    return this.activosService.disable(id, dto, user);
   }
 
   @Delete('activos/:id')
   @UseGuards(JwtAuthGuard)
   remove(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DisableActivoDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.activosService.disable(id, user);
+    return this.activosService.disable(id, dto, user);
   }
 
   @Get('activos/:id/actividad-versiones')

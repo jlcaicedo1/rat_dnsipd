@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
+import { NotificationBell } from "../features/notifications/NotificationBell";
 import iessLogo from "../assets/iess-logo.png";
 
 const navSections = [
@@ -148,15 +149,19 @@ export function MainLayout() {
             <strong>{user?.nombre ?? "Usuario"}</strong>
             <small>{roleCapabilities.label}</small>
           </div>
-          <button
-            type="button"
-            className="button-ghost sidebar-logout-button"
-            title="Cambiar usuario"
-            onClick={handleLogout}
-          >
-            <LogOut size={16} strokeWidth={2.2} />
-            <span className="sidebar-logout-text">Cambiar usuario</span>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4 }}>
+            <NotificationBell />
+            <button
+              type="button"
+              className="button-ghost sidebar-logout-button"
+              title="Cambiar usuario"
+              onClick={handleLogout}
+              style={{ flex: 1 }}
+            >
+              <LogOut size={16} strokeWidth={2.2} />
+              <span className="sidebar-logout-text">Cambiar usuario</span>
+            </button>
+          </div>
         </div>
       </aside>
       <main className="content">

@@ -13,8 +13,10 @@ import type { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActividadesService } from './actividades.service';
+import { ApproveActividadDto } from './dto/approve-actividad.dto';
 import { ArchiveActividadDto } from './dto/archive-actividad.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { DevolverActividadDto } from './dto/devolver-actividad.dto';
 import { QueryActividadDto } from './dto/query-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
 
@@ -68,6 +70,26 @@ export class ActividadesController {
     @Body() dto: ArchiveActividadDto,
   ) {
     return this.actividadesService.archive(id, dto, user);
+  }
+
+  @Patch('actividades/:id/approve')
+  @UseGuards(JwtAuthGuard)
+  approve(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ApproveActividadDto,
+  ) {
+    return this.actividadesService.approve(id, dto, user);
+  }
+
+  @Patch('actividades/:id/devolver')
+  @UseGuards(JwtAuthGuard)
+  devolver(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DevolverActividadDto,
+  ) {
+    return this.actividadesService.devolver(id, dto, user);
   }
 
   @Get('actividades/:id/versiones')

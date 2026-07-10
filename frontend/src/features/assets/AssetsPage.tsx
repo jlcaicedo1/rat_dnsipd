@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AppIcon } from "../../components/AppIcon";
+import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
 import { apiClient } from "../../services/api-client";
@@ -221,6 +222,7 @@ export function AssetsPage() {
   const [activeAssetId, setActiveAssetId] = useState<number | "new" | null>(null);
   const [draftAsset, setDraftAsset] = useState<AssetDraft | null>(null);
   const [pendingSaveDraft, setPendingSaveDraft] = useState<AssetDraft | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<{ assetId: number; enable: boolean; nombre: string } | null>(null);
   const [assetFeedback, setAssetFeedback] = useState<AssetFeedback | null>(null);
   const [showAllDependencyDistribution, setShowAllDependencyDistribution] =
     useState(false);
@@ -314,11 +316,11 @@ export function AssetsPage() {
   });
 
   const toggleAssetActiveMutation = useMutation({
-    mutationFn: async ({ assetId, enable }: { assetId: number; enable: boolean }) => {
+    mutationFn: async ({ assetId, enable, motivo }: { assetId: number; enable: boolean; motivo: string }) => {
       if (enable) {
-        await apiClient.patch(`/activos/${assetId}`, { activo: true });
+        await apiClient.patch(`/activos/${assetId}`, { activo: true, motivo });
       } else {
-        await apiClient.patch(`/activos/${assetId}/disable`);
+        await apiClient.patch(`/activos/${assetId}/disable`, { motivo });
       }
     },
     onSuccess: async (_result, { enable }) => {
@@ -327,6 +329,7 @@ export function AssetsPage() {
         type: "success",
         message: enable ? "Activo reactivado con exito." : "Activo dado de baja con exito.",
       });
+      setPendingToggle(null);
       setActiveAssetId(null);
       setDraftAsset(null);
     },
@@ -844,7 +847,7 @@ export function AssetsPage() {
           }}
           onToggleActive={() => {
             if (draftAsset?.id) {
-              toggleAssetActiveMutation.mutate({ assetId: draftAsset.id, enable: !draftAsset.activo });
+              setPendingToggle({ assetId: draftAsset.id, enable: !draftAsset.activo, nombre: draftAsset.nombre });
             }
           }}
           onSave={() => {
@@ -878,6 +881,18 @@ export function AssetsPage() {
               onSettled: () => setPendingSaveDraft(null),
             });
           }}
+        />
+      ) : null}
+
+      {pendingToggle ? (
+        <ConfirmWithMotivoModal
+          title={pendingToggle.enable ? "Reactivar activo" : "Dar de baja activo"}
+          description={pendingToggle.nombre}
+          actionLabel={pendingToggle.enable ? "Confirmar reactivacion" : "Confirmar baja"}
+          variant={pendingToggle.enable ? "primary" : "warning"}
+          isSubmitting={toggleAssetActiveMutation.isPending}
+          onConfirm={(motivo) => toggleAssetActiveMutation.mutate({ assetId: pendingToggle.assetId, enable: pendingToggle.enable, motivo })}
+          onCancel={() => setPendingToggle(null)}
         />
       ) : null}
     </section>

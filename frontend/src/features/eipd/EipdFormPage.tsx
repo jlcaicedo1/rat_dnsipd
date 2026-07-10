@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import {
@@ -8,6 +9,14 @@ import {
 } from "./eipd-form-data";
 import { useEipdFormCreate, useEipdFormOne, useEipdFormSave, type EipdFormPatch } from "./eipd-form.api";
 import "./eipd-form.css";
+
+type EipdPendingAction = {
+  estado: string;
+  titulo: string;
+  actionLabel: string;
+  variant: "primary" | "warning" | "danger";
+  payload?: EipdFormPatch;
+};
 
 type FormState = Record<string, string>;
 type TratRow = { medida: string; tipo: string; responsable: string; plazo: string; estado: string; evidencia: string };
@@ -84,6 +93,7 @@ export function EipdFormPage() {
   const [s4Rows, setS4Rows] = useState<Array<Record<string, string>>>([{}]);
   const [s5Rows, setS5Rows] = useState<Array<Record<string, string>>>([{}]);
   const [s6Rows, setS6Rows] = useState<Array<Record<string, string>>>([{}]);
+  const [pendingAction, setPendingAction] = useState<EipdPendingAction | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<number | null>(null);
 
@@ -153,18 +163,31 @@ export function EipdFormPage() {
   }
 
   async function handleEnviarRevision() {
+    setPendingAction({
+      estado: "EN_REVISION",
+      titulo: "Enviar EIPD a revision",
+      actionLabel: "Confirmar envio",
+      variant: "primary",
+      payload: buildPayload(),
+    });
+  }
+
+  async function executeEstadoAction(action: EipdPendingAction, motivo: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaving(true);
+    const extra = { motivo } as unknown as EipdFormPatch;
     if (isNew || !docIdRef.current) {
       const created = await createMutation.mutateAsync({ actividadVersionId });
       docIdRef.current = created.id;
-      await saveMutation.mutateAsync({ id: created.id, payload: { ...buildPayload(), estado: "EN_REVISION" } });
+      await saveMutation.mutateAsync({ id: created.id, payload: { ...(action.payload ?? {}), estado: action.estado, ...extra } });
       setSaving(false);
+      setPendingAction(null);
       navigate(`/eipd/evaluacion/${created.id}`, { replace: true });
       return;
     }
-    await saveMutation.mutateAsync({ id: docIdRef.current, payload: { ...buildPayload(), estado: "EN_REVISION" } });
+    await saveMutation.mutateAsync({ id: docIdRef.current, payload: { ...(action.payload ?? {}), estado: action.estado, ...extra } });
     setSaving(false);
+    setPendingAction(null);
   }
 
   function setField(key: string, value: string) { setForm((f) => ({ ...f, [key]: value })); }
@@ -260,7 +283,7 @@ export function EipdFormPage() {
               type="button"
               className="button-primary"
               disabled={saving || saveMutation.isPending}
-              onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "APROBADO" } })}
+              onClick={() => setPendingAction({ estado: "APROBADO", titulo: "Aprobar formulario EIPD", actionLabel: "Confirmar aprobacion", variant: "primary" })}
             >
               Aprobar
             </button>
@@ -271,7 +294,7 @@ export function EipdFormPage() {
               className="button-secondary"
               disabled={saving || saveMutation.isPending}
               style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
-              onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "DEVUELTO" } })}
+              onClick={() => setPendingAction({ estado: "DEVUELTO", titulo: "Devolver EIPD para correccion", actionLabel: "Confirmar devolucion", variant: "warning" })}
             >
               Devolver
             </button>
@@ -747,7 +770,7 @@ export function EipdFormPage() {
                 type="button"
                 className="button-primary"
                 disabled={saving || saveMutation.isPending}
-                onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "APROBADO" } })}
+                onClick={() => setPendingAction({ estado: "APROBADO", titulo: "Aprobar formulario EIPD", actionLabel: "Confirmar aprobacion", variant: "primary" })}
               >
                 Aprobar
               </button>
@@ -758,7 +781,7 @@ export function EipdFormPage() {
                 className="button-secondary"
                 disabled={saving || saveMutation.isPending}
                 style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
-                onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "DEVUELTO" } })}
+                onClick={() => setPendingAction({ estado: "DEVUELTO", titulo: "Devolver EIPD para correccion", actionLabel: "Confirmar devolucion", variant: "warning" })}
               >
                 Devolver
               </button>
@@ -781,6 +804,17 @@ export function EipdFormPage() {
           </div>
         </div>
       </div>
+      {pendingAction && (
+        <ConfirmWithMotivoModal
+          title={pendingAction.titulo}
+          description={`Formulario EIPD ${doc?.codigo ?? ""}`}
+          actionLabel={pendingAction.actionLabel}
+          variant={pendingAction.variant}
+          isSubmitting={saveMutation.isPending}
+          onConfirm={(motivo) => void executeEstadoAction(pendingAction, motivo)}
+          onCancel={() => setPendingAction(null)}
+        />
+      )}
     </section>
   );
 }

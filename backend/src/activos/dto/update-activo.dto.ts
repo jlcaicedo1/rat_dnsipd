@@ -176,4 +176,8 @@ export class UpdateActivoDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsString()
+  motivo?: string;
 }

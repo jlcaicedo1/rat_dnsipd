@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEipdFormDto } from './dto/create-eipd-form.dto';
 import { UpsertEipdFormDto } from './dto/upsert-eipd-form.dto';
@@ -43,7 +44,10 @@ const ACTIVIDAD_VERSION_SELECT = {
 
 @Injectable()
 export class EipdFormService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificaciones: NotificacionesService,
+  ) {}
 
   async create(dto: CreateEipdFormDto, actor: AuthenticatedUser) {
     if (isRevisor(actor.role)) {
@@ -114,6 +118,8 @@ export class EipdFormService {
   }
 
   async update(id: number, dto: UpsertEipdFormDto, actor: AuthenticatedUser) {
+    const before = await this.prisma.eipdFormDoc.findFirst({ where: { id }, select: { estado: true, codigo: true, dependenciaId: true } });
+
     const data = await this.prisma.eipdFormDoc.update({
       where: { id },
       data: {
@@ -131,6 +137,21 @@ export class EipdFormService {
       },
       include: { actividadVersion: { select: ACTIVIDAD_VERSION_SELECT } },
     });
+
+    if (dto.estado && before?.estado !== dto.estado) {
+      const motivo = (dto as unknown as Record<string, string>).motivo ?? undefined;
+      const codigo = data.codigo;
+      const depId = data.dependenciaId ?? undefined;
+
+      if (dto.estado === 'EN_REVISION') {
+        await this.notificaciones.crear({ tipo: 'EIPD_ENVIADA_REVISION', modulo: 'eipd', titulo: 'EIPD enviada a revision', mensaje: `El formulario EIPD ${codigo} fue enviado para revision.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'REVISOR', paraDependenciaId: depId });
+      } else if (dto.estado === 'APROBADO') {
+        await this.notificaciones.crear({ tipo: 'EIPD_APROBADA', modulo: 'eipd', titulo: 'EIPD aprobada', mensaje: `El formulario EIPD ${codigo} fue aprobado.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'OPERADOR', paraDependenciaId: depId });
+      } else if (dto.estado === 'DEVUELTO') {
+        await this.notificaciones.crear({ tipo: 'EIPD_DEVUELTA', modulo: 'eipd', titulo: 'EIPD devuelta para correccion', mensaje: `El formulario EIPD ${codigo} fue devuelto por el revisor.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'OPERADOR', paraDependenciaId: depId });
+      }
+    }
+
     return { data };
   }
 

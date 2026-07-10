@@ -8,9 +8,12 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
 import { AuthorizationScopeService } from '../auth/authorization-scope.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ApproveActividadDto } from './dto/approve-actividad.dto';
 import { ArchiveActividadDto } from './dto/archive-actividad.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { DevolverActividadDto } from './dto/devolver-actividad.dto';
 import { QueryActividadDto } from './dto/query-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
 
@@ -20,6 +23,7 @@ export class ActividadesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly authz: AuthorizationScopeService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   async findAll(query: QueryActividadDto, actor: AuthenticatedUser) {
@@ -261,12 +265,117 @@ export class ActividadesService {
       return archived;
     });
 
+    await this.notificaciones.crear({
+      tipo: 'ACTIVIDAD_ARCHIVADA',
+      modulo: 'actividades',
+      titulo: 'Actividad archivada',
+      mensaje: `La actividad ${existing.codigo} ha sido archivada.`,
+      de: actor?.username ?? 'sistema',
+      motivo: dto.motivo.trim(),
+      entidadId: id,
+      entidadCodigo: existing.codigo,
+      paraRol: 'OPERADOR',
+      paraDependenciaId: await this.resolveActividadDependenciaId(id),
+    });
+
     return {
       data: {
         ...data,
         motivoArchivo: dto.motivo.trim(),
       },
     };
+  }
+
+  async approve(
+    id: number,
+    dto: ApproveActividadDto,
+    actor?: AuthenticatedUser,
+  ) {
+    this.authz.assertCanArchiveActivity(actor);
+    const existing = await this.ensureExists(id, actor);
+
+    const data = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.actividadTratamiento.update({
+        where: { id },
+        data: { estadoGeneral: 'VIGENTE' },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'actividades',
+        entidad: 'ActividadTratamiento',
+        entidadId: id,
+        accion: 'APPROVE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Aprobacion de actividad de tratamiento',
+        beforeData: existing,
+        afterData: updated,
+        metadata: { motivo: dto.motivo.trim() },
+      });
+
+      return updated;
+    });
+
+    await this.notificaciones.crear({
+      tipo: 'ACTIVIDAD_APROBADA',
+      modulo: 'actividades',
+      titulo: 'Actividad aprobada',
+      mensaje: `La actividad ${existing.codigo} ha sido aprobada.`,
+      de: actor?.username ?? 'sistema',
+      motivo: dto.motivo.trim(),
+      entidadId: id,
+      entidadCodigo: existing.codigo,
+      paraRol: 'OPERADOR',
+      paraDependenciaId: await this.resolveActividadDependenciaId(id),
+    });
+
+    return { data };
+  }
+
+  async devolver(
+    id: number,
+    dto: DevolverActividadDto,
+    actor?: AuthenticatedUser,
+  ) {
+    this.authz.assertCanArchiveActivity(actor);
+    const existing = await this.ensureExists(id, actor);
+
+    const data = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.actividadTratamiento.update({
+        where: { id },
+        data: { estadoGeneral: 'EN_CONSTRUCCION' },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'actividades',
+        entidad: 'ActividadTratamiento',
+        entidadId: id,
+        accion: 'DEVOLVER',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Devolucion de actividad al equipo elaborador',
+        beforeData: existing,
+        afterData: updated,
+        metadata: { motivo: dto.motivo.trim() },
+      });
+
+      return updated;
+    });
+
+    await this.notificaciones.crear({
+      tipo: 'ACTIVIDAD_DEVUELTA',
+      modulo: 'actividades',
+      titulo: 'Actividad devuelta para correccion',
+      mensaje: `La actividad ${existing.codigo} fue devuelta por el revisor.`,
+      de: actor?.username ?? 'sistema',
+      motivo: dto.motivo.trim(),
+      entidadId: id,
+      entidadCodigo: existing.codigo,
+      paraRol: 'OPERADOR',
+      paraDependenciaId: await this.resolveActividadDependenciaId(id),
+    });
+
+    return { data };
   }
 
   async findVersiones(id: number, actor: AuthenticatedUser) {
@@ -367,6 +476,14 @@ export class ActividadesService {
     }
 
     return actividad;
+  }
+
+  private async resolveActividadDependenciaId(actividadId: number): Promise<number | undefined> {
+    const a = await this.prisma.actividadTratamiento.findFirst({
+      where: { id: actividadId },
+      include: { rat: { include: { dependencia: true } } },
+    });
+    return a?.rat.dependenciaId ?? undefined;
   }
 
   private async ensureCodigoDisponible(

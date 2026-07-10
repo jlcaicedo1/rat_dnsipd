@@ -17,6 +17,7 @@ import { RiesgosModule } from "./riesgos/riesgos.module";
 import { EipdFormModule } from "./eipd-form/eipd-form.module";
 import { ChecklistDpdModule } from "./checklist-dpd/checklist-dpd.module";
 import { ImportRatModule } from "./import-rat/import-rat.module";
+import { NotificacionesModule } from "./notificaciones/notificaciones.module";
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ImportRatModule } from "./import-rat/import-rat.module";
     EipdFormModule,
     ChecklistDpdModule,
     ImportRatModule,
+    NotificacionesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

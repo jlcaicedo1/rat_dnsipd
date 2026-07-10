@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import { EJES, type EjeKey } from "./checklist-dpd-data";
 import { useChecklistDpdCreate, useChecklistDpdOne, useChecklistDpdSave, type ChecklistDpdPatch } from "./checklist-dpd.api";
 import "./checklist-dpd.css";
+
+type ChecklistPendingAction = {
+  estado: string;
+  titulo: string;
+  actionLabel: string;
+  variant: "primary" | "warning" | "danger";
+  payload?: ChecklistDpdPatch;
+};
 
 type Nivel = 0 | 1 | 2 | 3 | "na" | null;
 type ControlState = { id: number; nivel: Nivel; evidencia: string };
@@ -111,6 +120,7 @@ export function ChecklistDpdPage() {
   const [plan, setPlan] = useState<PlanRow[]>([{}]);
   const [form, setForm] = useState<FormData>(makeInitialForm);
   const [saving, setSaving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<ChecklistPendingAction | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const docIdRef = useRef<number | null>(null);
 
@@ -156,22 +166,32 @@ export function ChecklistDpdPage() {
     setSaving(false);
   }
 
-  async function handleEnviarRevision() {
+  function handleEnviarRevision() {
+    setPendingAction({
+      estado: "EN_REVISION",
+      titulo: "Enviar Checklist DPD a revision",
+      actionLabel: "Confirmar envio",
+      variant: "primary",
+      payload: { controles: state, planRows: plan, formData: form },
+    });
+  }
+
+  async function executeEstadoAction(action: ChecklistPendingAction, motivo: string) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaving(true);
+    const extra = { motivo } as unknown as ChecklistDpdPatch;
     if (isNew || !docIdRef.current) {
       const created = await createMutation.mutateAsync(undefined);
       docIdRef.current = created.id;
-      await saveMutation.mutateAsync({ id: created.id, payload: { controles: state, planRows: plan, formData: form, estado: "EN_REVISION" } });
+      await saveMutation.mutateAsync({ id: created.id, payload: { ...(action.payload ?? {}), estado: action.estado, ...extra } });
       setSaving(false);
+      setPendingAction(null);
       navigate(`/checklist-dpd/${created.id}`, { replace: true });
       return;
     }
-    await saveMutation.mutateAsync({
-      id: docIdRef.current,
-      payload: { controles: state, planRows: plan, formData: form, estado: "EN_REVISION" },
-    });
+    await saveMutation.mutateAsync({ id: docIdRef.current, payload: { ...(action.payload ?? {}), estado: action.estado, ...extra } });
     setSaving(false);
+    setPendingAction(null);
   }
 
   const stats = useMemo(() => EJES.map((eje) => calcEje(state[eje.key])), [state]);
@@ -290,7 +310,7 @@ export function ChecklistDpdPage() {
               type="button"
               className="button-primary"
               disabled={saving || saveMutation.isPending}
-              onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { controles: state, planRows: plan, formData: form, estado: "APROBADO" } })}
+              onClick={() => setPendingAction({ estado: "APROBADO", titulo: "Aprobar Checklist DPD", actionLabel: "Confirmar aprobacion", variant: "primary" })}
             >
               Aprobar
             </button>
@@ -301,7 +321,7 @@ export function ChecklistDpdPage() {
               className="button-secondary"
               disabled={saving || saveMutation.isPending}
               style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
-              onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "DEVUELTO" } })}
+              onClick={() => setPendingAction({ estado: "DEVUELTO", titulo: "Devolver Checklist para correccion", actionLabel: "Confirmar devolucion", variant: "warning" })}
             >
               Devolver
             </button>
@@ -311,7 +331,7 @@ export function ChecklistDpdPage() {
               type="button"
               className="button-secondary"
               disabled={saving || saveMutation.isPending}
-              onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "CERRADO" } })}
+              onClick={() => setPendingAction({ estado: "CERRADO", titulo: "Cerrar Checklist DPD", actionLabel: "Confirmar cierre", variant: "warning" })}
             >
               Cerrar
             </button>
@@ -610,7 +630,7 @@ export function ChecklistDpdPage() {
                 type="button"
                 className="button-primary"
                 disabled={saving || saveMutation.isPending}
-                onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { controles: state, planRows: plan, formData: form, estado: "APROBADO" } })}
+                onClick={() => setPendingAction({ estado: "APROBADO", titulo: "Aprobar Checklist DPD", actionLabel: "Confirmar aprobacion", variant: "primary" })}
               >
                 Aprobar
               </button>
@@ -621,7 +641,7 @@ export function ChecklistDpdPage() {
                 className="button-secondary"
                 disabled={saving || saveMutation.isPending}
                 style={{ borderColor: "var(--warning, #d97706)", color: "var(--warning, #d97706)" }}
-                onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "DEVUELTO" } })}
+                onClick={() => setPendingAction({ estado: "DEVUELTO", titulo: "Devolver Checklist para correccion", actionLabel: "Confirmar devolucion", variant: "warning" })}
               >
                 Devolver
               </button>
@@ -631,7 +651,7 @@ export function ChecklistDpdPage() {
                 type="button"
                 className="button-secondary"
                 disabled={saving || saveMutation.isPending}
-                onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "CERRADO" } })}
+                onClick={() => setPendingAction({ estado: "CERRADO", titulo: "Cerrar Checklist DPD", actionLabel: "Confirmar cierre", variant: "warning" })}
               >
                 Cerrar checklist
               </button>
@@ -644,6 +664,18 @@ export function ChecklistDpdPage() {
           </div>
         </div>
       </div>
+
+      {pendingAction && (
+        <ConfirmWithMotivoModal
+          title={pendingAction.titulo}
+          description={`Checklist DPD ${doc?.codigo ?? ""}`}
+          actionLabel={pendingAction.actionLabel}
+          variant={pendingAction.variant}
+          isSubmitting={saveMutation.isPending}
+          onConfirm={(motivo) => void executeEstadoAction(pendingAction, motivo)}
+          onCancel={() => setPendingAction(null)}
+        />
+      )}
     </section>
   );
 }

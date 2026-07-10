@@ -376,6 +376,26 @@ model OrgTipoProceso {
   dependencias OrgDependencia[]
 }
 
+model Notificacion {
+  id                Int      @id @default(autoincrement())
+  paraUsuario       String?
+  paraRol           String?
+  paraDependenciaId Int?
+  de                String
+  tipo              String
+  modulo            String
+  entidadId         Int?
+  entidadCodigo     String?
+  titulo            String
+  mensaje           String
+  motivo            String?
+  leida             Boolean  @default(false)
+  creadoEn          DateTime @default(now())
+
+  @@index([paraUsuario, leida])
+  @@index([paraRol, paraDependenciaId, leida])
+}
+
 enum RoleCode {
   ADMIN
   ADMIN_TECNICO

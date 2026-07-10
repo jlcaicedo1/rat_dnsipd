@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/authenticated-user.interface';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateChecklistDpdDto } from './dto/create-checklist-dpd.dto';
 import { UpsertChecklistDpdDto } from './dto/upsert-checklist-dpd.dto';
@@ -22,7 +23,10 @@ function isRevisor(role: string) {
 
 @Injectable()
 export class ChecklistDpdService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificaciones: NotificacionesService,
+  ) {}
 
   async create(dto: CreateChecklistDpdDto, actor: AuthenticatedUser) {
     if (isRevisor(actor.role)) {
@@ -69,6 +73,8 @@ export class ChecklistDpdService {
   }
 
   async update(id: number, dto: UpsertChecklistDpdDto, actor: AuthenticatedUser) {
+    const before = await this.prisma.checklistDpd.findFirst({ where: { id }, select: { estado: true, codigo: true, dependenciaId: true } });
+
     const data = await this.prisma.checklistDpd.update({
       where: { id },
       data: {
@@ -80,6 +86,21 @@ export class ChecklistDpdService {
         updatedById: actor.sub,
       },
     });
+
+    if (dto.estado && before?.estado !== dto.estado) {
+      const motivo = (dto as unknown as Record<string, string>).motivo ?? undefined;
+      const codigo = data.codigo;
+      const depId = data.dependenciaId ?? undefined;
+
+      if (dto.estado === 'EN_REVISION') {
+        await this.notificaciones.crear({ tipo: 'CHECKLIST_ENVIADO_REVISION', modulo: 'checklist-dpd', titulo: 'Checklist enviado a revision', mensaje: `El checklist DPD ${codigo} fue enviado para revision.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'REVISOR', paraDependenciaId: depId });
+      } else if (dto.estado === 'APROBADO') {
+        await this.notificaciones.crear({ tipo: 'CHECKLIST_APROBADO', modulo: 'checklist-dpd', titulo: 'Checklist aprobado', mensaje: `El checklist DPD ${codigo} fue aprobado.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'OPERADOR', paraDependenciaId: depId });
+      } else if (dto.estado === 'DEVUELTO') {
+        await this.notificaciones.crear({ tipo: 'CHECKLIST_DEVUELTO', modulo: 'checklist-dpd', titulo: 'Checklist devuelto para correccion', mensaje: `El checklist DPD ${codigo} fue devuelto por el revisor.`, de: actor.username, motivo, entidadId: id, entidadCodigo: codigo, paraRol: 'OPERADOR', paraDependenciaId: depId });
+      }
+    }
+
     return { data };
   }
 

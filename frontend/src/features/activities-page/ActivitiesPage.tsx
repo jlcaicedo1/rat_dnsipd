@@ -38,6 +38,7 @@ import {
 import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
 import { ArchiveConfirmModal } from "./ArchiveConfirmModal";
+import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
 
 type DependenciasResponse = {
   data: DependencyScopeEntity[];
@@ -154,6 +155,8 @@ export function ActivitiesPage() {
   const [previewActivityId, setPreviewActivityId] = useState<number | null>(null);
   const [relationshipActivityId, setRelationshipActivityId] = useState<number | null>(null);
   const [archiveActivityId, setArchiveActivityId] = useState<number | null>(null);
+  const [approveActivityId, setApproveActivityId] = useState<number | null>(null);
+  const [devolverActivityId, setDevolverActivityId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const archiveMutation = useMutation({
@@ -162,6 +165,28 @@ export function ActivitiesPage() {
     },
     onSuccess: () => {
       setArchiveActivityId(null);
+      setActiveActivityId(null);
+      void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
+    },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+      await apiClient.patch(`/actividades/${id}/approve`, { motivo });
+    },
+    onSuccess: () => {
+      setApproveActivityId(null);
+      setActiveActivityId(null);
+      void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
+    },
+  });
+
+  const devolverMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+      await apiClient.patch(`/actividades/${id}/devolver`, { motivo });
+    },
+    onSuccess: () => {
+      setDevolverActivityId(null);
       setActiveActivityId(null);
       void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
     },
@@ -260,7 +285,9 @@ export function ActivitiesPage() {
     previewActivityId !== null ||
     relationshipActivityId !== null ||
     activeActivityId !== null ||
-    archiveActivityId !== null;
+    archiveActivityId !== null ||
+    approveActivityId !== null ||
+    devolverActivityId !== null;
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -289,6 +316,8 @@ export function ActivitiesPage() {
         setRelationshipActivityId(null);
         setActiveActivityId(null);
         setArchiveActivityId(null);
+        setApproveActivityId(null);
+        setDevolverActivityId(null);
       }
     };
 
@@ -580,12 +609,20 @@ export function ActivitiesPage() {
           canDuplicate={roleCapabilities.activities.duplicate}
           canUpdate={roleCapabilities.activities.update}
           onApprove={() => {
-            persistActivityStatus(activeActivity.id, "Vigente");
-            setWorkspaceVersion((current) => current + 1);
+            if (activeActivity.versionId) {
+              setApproveActivityId(activeActivity.id);
+            } else {
+              persistActivityStatus(activeActivity.id, "Vigente");
+              setWorkspaceVersion((current) => current + 1);
+            }
           }}
           onDevolver={() => {
-            persistActivityStatus(activeActivity.id, "Borrador");
-            setWorkspaceVersion((current) => current + 1);
+            if (activeActivity.versionId) {
+              setDevolverActivityId(activeActivity.id);
+            } else {
+              persistActivityStatus(activeActivity.id, "Borrador");
+              setWorkspaceVersion((current) => current + 1);
+            }
           }}
           onArchive={() => {
             setArchiveActivityId(activeActivity.id);
@@ -618,6 +655,30 @@ export function ActivitiesPage() {
             archiveMutation.mutate({ id: archiveActivityId, motivo });
           }}
           onCancel={() => setArchiveActivityId(null)}
+        />
+      ) : null}
+
+      {approveActivityId !== null ? (
+        <ConfirmWithMotivoModal
+          title="Aprobar actividad de tratamiento"
+          description={`${scopedActivityRecords.find((a) => a.id === approveActivityId)?.codigo ?? ""} — ${scopedActivityRecords.find((a) => a.id === approveActivityId)?.nombre ?? ""}`}
+          actionLabel="Confirmar aprobacion"
+          variant="primary"
+          isSubmitting={approveMutation.isPending}
+          onConfirm={(motivo) => approveMutation.mutate({ id: approveActivityId, motivo })}
+          onCancel={() => setApproveActivityId(null)}
+        />
+      ) : null}
+
+      {devolverActivityId !== null ? (
+        <ConfirmWithMotivoModal
+          title="Devolver actividad para correccion"
+          description={`${scopedActivityRecords.find((a) => a.id === devolverActivityId)?.codigo ?? ""} — ${scopedActivityRecords.find((a) => a.id === devolverActivityId)?.nombre ?? ""}`}
+          actionLabel="Confirmar devolucion"
+          variant="warning"
+          isSubmitting={devolverMutation.isPending}
+          onConfirm={(motivo) => devolverMutation.mutate({ id: devolverActivityId, motivo })}
+          onCancel={() => setDevolverActivityId(null)}
         />
       ) : null}
     </section>
