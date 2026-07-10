@@ -1,5 +1,6 @@
 import { LogOut, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import iessLogoColor from "../assets/iess-logo-color.png";
 import { useAuthStore } from "../features/auth/auth-store";
 import { getRoleCapabilities } from "../features/auth/permissions";
 import { NotificationBell } from "../features/notifications/NotificationBell";
@@ -33,8 +34,7 @@ export function TopNav({ onMobileMenuToggle }: TopNavProps) {
           <Menu size={19} strokeWidth={2} />
         </button>
         <div className="top-nav-brand">
-          <span className="top-nav-system-tag">RAT</span>
-          <span className="top-nav-brand-label">DNSIPD</span>
+          <img src={iessLogoColor} alt="IESS" className="top-nav-logo" />
         </div>
       </div>
 

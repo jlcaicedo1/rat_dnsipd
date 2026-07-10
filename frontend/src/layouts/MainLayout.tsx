@@ -5,7 +5,7 @@ import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { TopNav } from "../components/TopNav";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
-import iessLogo from "../assets/iess-logo.png";
+import iessLogo from "../assets/iess-logo.png"; // kept for print-header only
 
 const navSections = [
   {
@@ -95,10 +95,6 @@ export function MainLayout() {
 
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-brand-text">
-            <img src={iessLogo} alt="IESS" className="sidebar-logo" />
-            <img src={iessLogo} alt="IESS" className="sidebar-logo-icon" />
-          </div>
           <button
             type="button"
             className="sidebar-collapse-button"
