@@ -132,7 +132,7 @@ a {
 }
 
 .top-nav-logo {
-  height: 30px;
+  height: 38px;
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
@@ -247,7 +247,7 @@ a {
   flex-direction: column;
   height: calc(100vh - var(--topnav-h));
   min-height: calc(100vh - var(--topnav-h));
-  background: #f4f8fe;
+  background: #ffffff;
   color: var(--ink);
   padding: 20px 16px;
   border-right: 1px solid var(--line);
