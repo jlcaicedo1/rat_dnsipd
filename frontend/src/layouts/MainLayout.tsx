@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
+import { TopNav } from "../components/TopNav";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
-import { NotificationBell } from "../features/notifications/NotificationBell";
 import iessLogo from "../assets/iess-logo.png";
 
 const navSections = [
@@ -48,7 +48,6 @@ export function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") {
@@ -57,7 +56,6 @@ export function MainLayout() {
 
     return window.localStorage.getItem("rat_dnsipd_sidebar_collapsed") === "true";
   });
-  const roleCapabilities = getRoleCapabilities(user?.role);
   const visibleSections = navSections
     .map((section) => ({
       ...section,
@@ -76,12 +74,6 @@ export function MainLayout() {
     );
   }, [isSidebarCollapsed]);
 
-  function handleLogout() {
-    setIsSidebarOpen(false);
-    logout();
-    navigate("/login", { replace: true });
-  }
-
   const shellClassName = [
     "app-shell",
     isSidebarOpen ? "app-shell-mobile-open" : "",
@@ -91,6 +83,8 @@ export function MainLayout() {
     .join(" ");
 
   return (
+    <>
+      <TopNav onMobileMenuToggle={() => setIsSidebarOpen((v) => !v)} />
     <div className={shellClassName}>
       <button
         type="button"
@@ -143,26 +137,6 @@ export function MainLayout() {
             </div>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <div className="sidebar-session">
-            <span className="sidebar-user-label">Sesion</span>
-            <strong>{user?.nombre ?? "Usuario"}</strong>
-            <small>{roleCapabilities.label}</small>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4 }}>
-            <NotificationBell />
-            <button
-              type="button"
-              className="button-ghost sidebar-logout-button"
-              title="Cambiar usuario"
-              onClick={handleLogout}
-              style={{ flex: 1 }}
-            >
-              <LogOut size={16} strokeWidth={2.2} />
-              <span className="sidebar-logout-text">Cambiar usuario</span>
-            </button>
-          </div>
-        </div>
       </aside>
       <main className="content">
         <div className="print-header" aria-hidden="true">
@@ -172,29 +146,11 @@ export function MainLayout() {
             <small>Direccion Nacional de Tecnologias de la Informacion · Sistema de Proteccion de Datos</small>
           </div>
         </div>
-        <div className="mobile-topbar">
-          <div className="mobile-topbar-brand">
-            <strong>DNSIPD</strong>
-          </div>
-
-          <div className="mobile-topbar-actions">
-            <button type="button" className="button-ghost" onClick={handleLogout}>
-              Salir
-            </button>
-            <button
-              type="button"
-              className="button-secondary mobile-topbar-toggle"
-              aria-expanded={isSidebarOpen}
-              onClick={() => setIsSidebarOpen((current) => !current)}
-            >
-              {isSidebarOpen ? "Cerrar menu" : "Menu"}
-            </button>
-          </div>
-        </div>
 
         <Outlet />
       </main>
     </div>
+    </>
   );
 }
 

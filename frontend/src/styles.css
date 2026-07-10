@@ -37,6 +37,7 @@
   --iess-navy: #1a3a5c;
   --iess-gold: #e8a000;
   --iess-navy-light: #2557a0;
+  --topnav-h: 52px;
 }
 
 * {
@@ -55,6 +56,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+  padding-top: var(--topnav-h);
 }
 
 a {
@@ -78,14 +80,214 @@ a {
   display: none;
 }
 
+/* ── Top Navigation Bar ── */
+.top-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: var(--topnav-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--iess-navy);
+  box-shadow: 0 2px 16px rgba(10, 28, 48, 0.36);
+  gap: 0;
+}
+
+.top-nav-left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.top-nav-mobile-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 100%;
+  border: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 140ms ease;
+}
+
+.top-nav-mobile-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.top-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 20px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  text-decoration: none;
+}
+
+.top-nav-logo {
+  height: 30px;
+  width: auto;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
+}
+
+.top-nav-brand-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.top-nav-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-right: 6px;
+  gap: 2px;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.top-nav-datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 0 14px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.top-nav-time {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+.top-nav-date {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.top-nav-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.14);
+  flex-shrink: 0;
+  margin: 0 6px;
+}
+
+.top-nav-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px 0 14px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.top-nav-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--iess-gold);
+  color: var(--iess-navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
+.top-nav-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.top-nav-user-info strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.top-nav-user-info small {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.58);
+  white-space: nowrap;
+}
+
+/* NotificationBell inside dark topnav */
+.top-nav .notification-bell-button {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.top-nav .notification-bell-button:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+.top-nav-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  margin-left: 4px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+}
+
+.top-nav-logout:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+}
+
 .sidebar {
   position: sticky;
-  top: 0;
+  top: var(--topnav-h);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  min-height: 100vh;
+  height: calc(100vh - var(--topnav-h));
+  min-height: calc(100vh - var(--topnav-h));
   background: var(--iess-navy);
   color: #ffffff;
   padding: 20px 16px;
@@ -1079,8 +1281,9 @@ a {
 
 /* ── Print / PDF styles ── */
 @media print {
-  .sidebar, .eipdp-nav, .eipdp-toolbar, .ckl-toolbar, .ckl-tabs { display: none !important; }
+  .top-nav, .sidebar, .eipdp-nav, .eipdp-toolbar, .ckl-toolbar, .ckl-tabs { display: none !important; }
   .app-shell { display: block !important; }
+  body { padding-top: 0 !important; }
   .content { padding: 0 !important; }
   .print-header {
     display: flex !important;
@@ -4808,12 +5011,12 @@ h4 {
 
   .sidebar {
     position: fixed;
-    top: 0;
+    top: var(--topnav-h);
     left: 0;
     z-index: 40;
     width: min(320px, calc(100vw - 28px));
-    min-height: 100vh;
-    max-height: 100vh;
+    height: calc(100vh - var(--topnav-h));
+    max-height: calc(100vh - var(--topnav-h));
     overflow-y: auto;
     transform: translateX(-104%);
     transition: transform 180ms ease;
@@ -4884,27 +5087,18 @@ h4 {
     transform: translateX(0);
   }
 
-  .mobile-topbar {
+  .top-nav-mobile-toggle {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 18px;
-    border: 1px solid rgba(18, 32, 51, 0.08);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: var(--shadow);
-    padding: 12px 14px;
   }
 
-  .mobile-topbar .brand-mark {
-    margin-bottom: 0;
-    width: 40px;
-    height: 40px;
+  .top-nav-datetime,
+  .top-nav-divider,
+  .top-nav-user-info {
+    display: none;
   }
 
-  .mobile-topbar-toggle {
-    flex: 0 0 auto;
+  .top-nav-user {
+    padding: 0 6px;
   }
 
   .content {
