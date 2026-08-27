@@ -67,7 +67,7 @@ export class ActivosService {
       ...(query.dependenciaId ? { dependenciaId: query.dependenciaId } : {}),
       ...(query.tipoActivoId ? { tipoActivoId: query.tipoActivoId } : {}),
       ...(query.impactoId ? { impactoId: query.impactoId } : {}),
-      ...(typeof query.activo === 'boolean' ? { activo: query.activo } : {}),
+      ...(typeof query.activo === 'boolean' ? { activo: query.activo } : { activo: true }),
     };
 
     const activos = await this.prisma.activoInformacion.findMany({

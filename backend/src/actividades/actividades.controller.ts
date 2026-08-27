@@ -92,6 +92,16 @@ export class ActividadesController {
     return this.actividadesService.devolver(id, dto, user);
   }
 
+  @Patch('actividades/:id/reopen')
+  @UseGuards(JwtAuthGuard)
+  reopen(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DevolverActividadDto,
+  ) {
+    return this.actividadesService.reopen(id, dto, user);
+  }
+
   @Get('actividades/:id/versiones')
   @UseGuards(JwtAuthGuard)
   findVersiones(

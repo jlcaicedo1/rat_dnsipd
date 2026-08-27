@@ -27,10 +27,16 @@ export class ActividadesService {
   ) {}
 
   async findAll(query: QueryActividadDto, actor: AuthenticatedUser) {
+    const canArchive = this.authz.canArchiveActivity(actor);
+
     const where: Prisma.ActividadTratamientoWhereInput = {
       AND: [this.authz.actividadWhere(actor)],
       ...(query.ratId ? { ratId: query.ratId } : {}),
-      ...(query.estadoGeneral ? { estadoGeneral: query.estadoGeneral } : {}),
+      ...(canArchive
+        ? query.estadoGeneral
+          ? { estadoGeneral: query.estadoGeneral }
+          : {}
+        : { estadoGeneral: { not: 'ARCHIVADO' } }),
       ...(query.search
         ? {
             OR: [
@@ -98,7 +104,19 @@ export class ActividadesService {
       };
     });
 
-    return { data };
+    let archivedCodigos: string[] = [];
+    if (!canArchive) {
+      const archived = await this.prisma.actividadTratamiento.findMany({
+        where: {
+          AND: [this.authz.actividadWhere(actor)],
+          estadoGeneral: 'ARCHIVADO',
+        },
+        select: { codigo: true },
+      });
+      archivedCodigos = archived.map((a) => a.codigo);
+    }
+
+    return { data, archivedCodigos };
   }
 
   async findOne(id: number, actor: AuthenticatedUser) {
@@ -291,7 +309,7 @@ export class ActividadesService {
     dto: ApproveActividadDto,
     actor?: AuthenticatedUser,
   ) {
-    this.authz.assertCanArchiveActivity(actor);
+    this.authz.assertCanApproveTreatment(actor);
     const existing = await this.ensureExists(id, actor);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -337,7 +355,7 @@ export class ActividadesService {
     dto: DevolverActividadDto,
     actor?: AuthenticatedUser,
   ) {
-    this.authz.assertCanArchiveActivity(actor);
+    this.authz.assertCanApproveTreatment(actor);
     const existing = await this.ensureExists(id, actor);
 
     const data = await this.prisma.$transaction(async (tx) => {
@@ -367,6 +385,52 @@ export class ActividadesService {
       modulo: 'actividades',
       titulo: 'Actividad devuelta para correccion',
       mensaje: `La actividad ${existing.codigo} fue devuelta por el revisor.`,
+      de: actor?.username ?? 'sistema',
+      motivo: dto.motivo.trim(),
+      entidadId: id,
+      entidadCodigo: existing.codigo,
+      paraRol: 'OPERADOR',
+      paraDependenciaId: await this.resolveActividadDependenciaId(id),
+    });
+
+    return { data };
+  }
+
+  async reopen(
+    id: number,
+    dto: DevolverActividadDto,
+    actor?: AuthenticatedUser,
+  ) {
+    this.authz.assertCanApproveTreatment(actor);
+    const existing = await this.ensureExists(id, actor);
+
+    const data = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.actividadTratamiento.update({
+        where: { id },
+        data: { estadoGeneral: 'EN_REVISION' },
+      });
+
+      await this.audit.log(tx, {
+        modulo: 'actividades',
+        entidad: 'ActividadTratamiento',
+        entidadId: id,
+        accion: 'REOPEN',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Reapertura de actividad vigente para revision',
+        beforeData: existing,
+        afterData: updated,
+        metadata: { motivo: dto.motivo.trim() },
+      });
+
+      return updated;
+    });
+
+    await this.notificaciones.crear({
+      tipo: 'ACTIVIDAD_REABIERTA',
+      modulo: 'actividades',
+      titulo: 'Actividad reabierta para revision',
+      mensaje: `La actividad ${existing.codigo} fue reabierta por el revisor.`,
       de: actor?.username ?? 'sistema',
       motivo: dto.motivo.trim(),
       entidadId: id,

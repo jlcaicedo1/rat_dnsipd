@@ -32,8 +32,8 @@ import {
 } from "../rat/registry-workspace";
 import { ReportPreviewModal } from "../rat/ReportPreviewModal";
 import {
-  buildReportPreviewDocument,
-  printReportPreviewDocument,
+  buildReportDocument,
+  printReportDocument,
 } from "../rat/TreatmentReportPreview";
 import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
@@ -107,8 +107,8 @@ export function ActivitiesPage() {
   const actividadesBackendQuery = useQuery({
     queryKey: ["actividades-backend"],
     queryFn: async () => {
-      const response = await apiClient.get<{ data: BackendActivity[] }>("/actividades");
-      return response.data.data;
+      const response = await apiClient.get<{ data: BackendActivity[]; archivedCodigos: string[] }>("/actividades");
+      return response.data;
     },
     staleTime: 30_000,
   });
@@ -118,14 +118,20 @@ export function ActivitiesPage() {
     [ratRecords],
   );
   const backendActivities = useMemo(
-    () => (actividadesBackendQuery.data ?? []).map(mapBackendToRegistry),
+    () => (actividadesBackendQuery.data?.data ?? []).map(mapBackendToRegistry),
+    [actividadesBackendQuery.data],
+  );
+  const backendArchivedCodigos = useMemo(
+    () => new Set(actividadesBackendQuery.data?.archivedCodigos ?? []),
     [actividadesBackendQuery.data],
   );
   const mergedActivityRecords = useMemo(() => {
     const backendCodigos = new Set(backendActivities.map((a) => a.codigo));
-    const localOnly = activityRecords.filter((a) => !backendCodigos.has(a.codigo));
+    const localOnly = activityRecords.filter(
+      (a) => !backendCodigos.has(a.codigo) && !backendArchivedCodigos.has(a.codigo),
+    );
     return [...backendActivities, ...localOnly];
-  }, [backendActivities, activityRecords]);
+  }, [backendActivities, backendArchivedCodigos, activityRecords]);
   const assignedDependencyScope = getAssignedDependencyScope(
     user,
     dependenciasQuery.data ?? [],
@@ -157,6 +163,7 @@ export function ActivitiesPage() {
   const [archiveActivityId, setArchiveActivityId] = useState<number | null>(null);
   const [approveActivityId, setApproveActivityId] = useState<number | null>(null);
   const [devolverActivityId, setDevolverActivityId] = useState<number | null>(null);
+  const [reopenActivityId, setReopenActivityId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const archiveMutation = useMutation({
@@ -192,6 +199,17 @@ export function ActivitiesPage() {
     },
   });
 
+  const reopenMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) => {
+      await apiClient.patch(`/actividades/${id}/reopen`, { motivo });
+    },
+    onSuccess: () => {
+      setReopenActivityId(null);
+      setActiveActivityId(null);
+      void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
+    },
+  });
+
   const relationshipActivity =
     scopedActivityRecords.find((item) => item.id === relationshipActivityId) ?? null;
   const mapaVersionId = relationshipActivity?.versionId ?? null;
@@ -210,9 +228,11 @@ export function ActivitiesPage() {
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
   const effectiveDependencia = restrictToAssignedDependency ? "Todas" : dependencia;
-  const visibleActivityRecords = roleCapabilities.role === "REVISOR"
-    ? scopedActivityRecords.filter((a) => a.estado !== "Archivado")
-    : scopedActivityRecords;
+  const canArchive = roleCapabilities.activities.archive;
+  const visibleActivityRecords =
+    estado === "Archivado" && canArchive
+      ? scopedActivityRecords
+      : scopedActivityRecords.filter((a) => a.estado !== "Archivado");
   const filteredActivities = visibleActivityRecords.filter((activity) => {
     const matchesSearch =
       search.trim().length === 0 ||
@@ -265,7 +285,14 @@ export function ActivitiesPage() {
   const previewTraceability = previewActivity
     ? getActivityTraceability(previewActivity.id)
     : null;
-  const previewSignatures = buildSignatureFields(previewActivity, previewTraceability);
+
+  const [previewSignatures, setPreviewSignatures] = useState<SignatureFieldState>(
+    () => buildSignatureFields(previewActivity, previewTraceability),
+  );
+  useEffect(() => {
+    setPreviewSignatures(buildSignatureFields(previewActivity, previewTraceability));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewActivityId]);
 
   const relationshipTraceability: ActivityTraceabilityModel | null = useMemo(() => {
     if (!relationshipActivity) return null;
@@ -325,33 +352,47 @@ export function ActivitiesPage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isAnyModalOpen]);
 
-  const stats = useMemo<ExecutiveKpiItem[]>(
-    () => [
+  const stats = useMemo<ExecutiveKpiItem[]>(() => {
+    const total = scopedActivityRecords.length;
+    const borradores = scopedActivityRecords.filter((item) => item.estado === "Borrador").length;
+    const enRevision = scopedActivityRecords.filter((item) => item.estado === "En revision").length;
+    const vigentes = scopedActivityRecords.filter((item) => item.estado === "Vigente").length;
+    const altoRiesgo = scopedActivityRecords.filter((item) => item.riesgo === "Alto").length;
+
+    return [
       {
         label: "Total actividades",
-        value: scopedActivityRecords.length,
+        value: total,
+        icon: "activities" as const,
         tone: "neutral",
       },
       {
-        label: "Borrador",
-        value: scopedActivityRecords.filter((item) => item.estado === "Borrador").length,
-        tone:
-          scopedActivityRecords.some((item) => item.estado === "Borrador") ? "neutral" : "success",
+        label: "En elaboracion",
+        value: borradores,
+        icon: "new" as const,
+        tone: borradores > 0 ? "neutral" : "success",
       },
       {
         label: "En revision",
-        value: scopedActivityRecords.filter((item) => item.estado === "En revision").length,
-        tone:
-          scopedActivityRecords.some((item) => item.estado === "En revision") ? "warning" : "success",
+        value: enRevision,
+        icon: "audit" as const,
+        tone: enRevision > 0 ? "warning" : "success",
       },
       {
         label: "Vigentes",
-        value: scopedActivityRecords.filter((item) => item.estado === "Vigente").length,
-        tone: "success",
+        value: vigentes,
+        icon: "checklist" as const,
+        tone: vigentes > 0 ? "success" : "neutral",
       },
-    ],
-    [scopedActivityRecords],
-  );
+      {
+        label: "Riesgo alto",
+        value: altoRiesgo,
+        icon: "risks" as const,
+        tone: altoRiesgo > 0 ? "critical" : "success",
+        emphasize: altoRiesgo > 0,
+      },
+    ];
+  }, [scopedActivityRecords]);
 
   function handlePrepareTreatment(activity: ActivityRegistryRecord, mode: "edit" | "duplicate") {
     seedTreatmentDraftFromActivity(activity, mode);
@@ -555,20 +596,16 @@ export function ActivitiesPage() {
           isOpen
           onClose={() => setPreviewActivityId(null)}
           onDownload={() => {
-            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
-
-            if (!surfaceMarkup || typeof document === "undefined") {
-              return;
-            }
-
-            const documentHtml = buildReportPreviewDocument(
+            if (typeof document === "undefined") return;
+            const documentHtml = buildReportDocument(
               `Registro ${previewActivity.codigo}`,
-              surfaceMarkup,
+              previewActivity.report,
+              previewSignatures,
+              previewActivity,
             );
             const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
             const objectUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
-
             link.href = objectUrl;
             link.download = `${previewActivity.codigo}-${slugify(previewActivity.nombre)}.html`;
             document.body.appendChild(link);
@@ -577,16 +614,18 @@ export function ActivitiesPage() {
             URL.revokeObjectURL(objectUrl);
           }}
           onPrint={() => {
-            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
-
-            if (!surfaceMarkup) {
-              return;
-            }
-
-            printReportPreviewDocument(`Registro ${previewActivity.codigo}`, surfaceMarkup);
+            printReportDocument(
+              `Registro ${previewActivity.codigo}`,
+              previewActivity.report,
+              previewSignatures,
+              previewActivity,
+            );
           }}
           report={previewActivity.report}
           signatures={previewSignatures}
+          onSignatureChange={(field, value) =>
+            setPreviewSignatures((prev) => ({ ...prev, [field]: value }))
+          }
           surfaceRef={previewSurfaceRef}
         />
       ) : null}
@@ -627,7 +666,13 @@ export function ActivitiesPage() {
           onArchive={() => {
             setArchiveActivityId(activeActivity.id);
           }}
-          onChangeStatus={() => handleActivityStatusChange(activeActivity)}
+          onChangeStatus={() => {
+            if (activeActivity.versionId && activeActivity.estado === "Vigente") {
+              setReopenActivityId(activeActivity.id);
+            } else {
+              handleActivityStatusChange(activeActivity);
+            }
+          }}
           onClose={() => setActiveActivityId(null)}
           onDuplicate={() => handlePrepareTreatment(activeActivity, "duplicate")}
           onEdit={() => handlePrepareTreatment(activeActivity, "edit")}
@@ -679,6 +724,18 @@ export function ActivitiesPage() {
           isSubmitting={devolverMutation.isPending}
           onConfirm={(motivo) => devolverMutation.mutate({ id: devolverActivityId, motivo })}
           onCancel={() => setDevolverActivityId(null)}
+        />
+      ) : null}
+
+      {reopenActivityId !== null ? (
+        <ConfirmWithMotivoModal
+          title="Reabrir actividad para revision"
+          description={`${scopedActivityRecords.find((a) => a.id === reopenActivityId)?.codigo ?? ""} — ${scopedActivityRecords.find((a) => a.id === reopenActivityId)?.nombre ?? ""}`}
+          actionLabel="Confirmar reapertura"
+          variant="warning"
+          isSubmitting={reopenMutation.isPending}
+          onConfirm={(motivo) => reopenMutation.mutate({ id: reopenActivityId, motivo })}
+          onCancel={() => setReopenActivityId(null)}
         />
       ) : null}
     </section>
@@ -945,8 +1002,10 @@ function buildSignatureFields(
       traceability?.owner.nombre ?? defaultSignatureFields.elaboradoPorNombre,
     elaboradoPorCargo:
       traceability?.owner.cargo ?? defaultSignatureFields.elaboradoPorCargo,
-    responsableNombre: activity.responsables[0] ?? defaultSignatureFields.responsableNombre,
-    responsableCargo: activity.unidadEjecutora || defaultSignatureFields.responsableCargo,
+    revisadoPorNombre: defaultSignatureFields.revisadoPorNombre,
+    revisadoPorCargo: defaultSignatureFields.revisadoPorCargo,
+    autoridadNombre: activity.responsables[0] ?? defaultSignatureFields.autoridadNombre,
+    autoridadCargo: activity.unidadEjecutora || defaultSignatureFields.autoridadCargo,
   };
 }
 

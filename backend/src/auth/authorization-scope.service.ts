@@ -9,6 +9,7 @@ const REVIEWER_ROLES = new Set([
   'APROBADOR_FUNCIONAL',
   'REVISOR_PROTECCION_DATOS',
   'REVISOR_SEGURIDAD',
+  'REVISOR_TRANSVERSAL',
 ]);
 const AUTHOR_ROLES = new Set([
   'OPERADOR',
@@ -260,6 +261,10 @@ export class AuthorizationScopeService {
         'Solo administracion tecnica puede ejecutar acciones administrativas del flujo.',
       );
     }
+  }
+
+  canArchiveActivity(user: AuthenticatedUser): boolean {
+    return ACTIVITY_ARCHIVE_ROLES.has(user.role);
   }
 
   assertCanArchiveActivity(user: AuthenticatedUser | undefined) {

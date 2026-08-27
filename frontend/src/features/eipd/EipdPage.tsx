@@ -257,42 +257,48 @@ export function EipdPage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeActivityId]);
 
-  const stats = useMemo<ExecutiveKpiItem[]>(
-    () => [
+  const stats = useMemo<ExecutiveKpiItem[]>(() => {
+    const enElaboracion = eipdCases.filter((item) => item.estadoEipd === "En elaboracion").length;
+    const enRevision = eipdCases.filter((item) => item.estadoEipd === "En revision DPD").length;
+    const consultaPrevia = eipdCases.filter((item) => item.requiereConsultaPrevia).length;
+    const aprobadas = eipdCases.filter(
+      (item) => item.estadoEipd === "Aprobada" || item.estadoEipd === "Vigente",
+    ).length;
+
+    return [
       {
         label: "Actividades con EIPD",
         value: eipdCases.length,
+        icon: "eipd" as const,
         tone: "neutral",
       },
       {
         label: "En elaboracion",
-        value: eipdCases.filter((item) => item.estadoEipd === "En elaboracion")
-          .length,
-        tone: "warning",
+        value: enElaboracion,
+        icon: "new" as const,
+        tone: enElaboracion > 0 ? "warning" : "neutral",
       },
       {
         label: "En revision DPD",
-        value: eipdCases.filter((item) => item.estadoEipd === "En revision DPD")
-          .length,
-        tone: "orange",
+        value: enRevision,
+        icon: "audit" as const,
+        tone: enRevision > 0 ? "orange" : "neutral",
       },
       {
         label: "Consulta previa",
-        value: eipdCases.filter((item) => item.requiereConsultaPrevia).length,
-        tone: "critical",
-        emphasize: eipdCases.some((item) => item.requiereConsultaPrevia),
+        value: consultaPrevia,
+        icon: "risks" as const,
+        tone: consultaPrevia > 0 ? "critical" : "neutral",
+        emphasize: consultaPrevia > 0,
       },
       {
         label: "Aprobadas",
-        value: eipdCases.filter(
-          (item) =>
-            item.estadoEipd === "Aprobada" || item.estadoEipd === "Vigente",
-        ).length,
+        value: aprobadas,
+        icon: "checklist" as const,
         tone: "success",
       },
-    ],
-    [eipdCases],
-  );
+    ];
+  }, [eipdCases]);
 
   const canUpdate = roleCapabilities.eipd.update;
   const canApprove = roleCapabilities.eipd.approve;

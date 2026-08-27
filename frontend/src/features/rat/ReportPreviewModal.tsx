@@ -15,6 +15,7 @@ type ReportPreviewModalProps = {
   onClose: () => void;
   onPrint: () => void;
   onDownload: () => void;
+  onSignatureChange?: (field: keyof SignatureFieldState, value: string) => void;
   surfaceRef: RefObject<HTMLDivElement>;
 };
 
@@ -27,6 +28,7 @@ export function ReportPreviewModal({
   onClose,
   onPrint,
   onDownload,
+  onSignatureChange,
   surfaceRef,
 }: ReportPreviewModalProps) {
   useEffect(() => {
@@ -86,10 +88,11 @@ export function ReportPreviewModal({
           <TreatmentReportPreview
             activity={activity}
             heading={heading}
-            readOnly
+            readOnly={!onSignatureChange}
             report={report}
             showToolbar={false}
             signatures={signatures}
+            onSignatureChange={onSignatureChange}
             surfaceRef={surfaceRef}
           />
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
+import iessLogoColor from "../../assets/iess-logo-color.png";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import { EJES, type EjeKey } from "./checklist-dpd-data";
@@ -262,6 +263,13 @@ export function ChecklistDpdPage() {
 
   return (
     <section className="wizard-experience">
+      <div className="print-header">
+        <img src={iessLogoColor} alt="IESS" />
+        <div className="print-header-text">
+          <strong>Instituto Ecuatoriano de Seguridad Social</strong>
+          <small>Checklist Privacidad por Diseno y por Defecto — {doc?.codigo ?? "—"}</small>
+        </div>
+      </div>
       {/* ── HEADER ── */}
       <header className="panel wizard-page-header">
         <div className="wizard-title-block">

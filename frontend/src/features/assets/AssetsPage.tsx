@@ -154,20 +154,6 @@ type AssetFeedback = {
   message: string;
 };
 
-type AssetDependencyDistribution = {
-  dependencyName: string;
-  dependencyShortName: string;
-  total: number;
-  active: number;
-  inactive: number;
-  highImpact: number;
-  catastrophic: number;
-  share: number;
-  relativeWidth: number;
-};
-
-const UNASSIGNED_DEPENDENCY_LABEL = "Sin dependencia asignada";
-
 const INITIAL_ASSET_DRAFT: AssetDraft = {
   codigo: "",
   nombre: "",
@@ -224,8 +210,6 @@ export function AssetsPage() {
   const [pendingSaveDraft, setPendingSaveDraft] = useState<AssetDraft | null>(null);
   const [pendingToggle, setPendingToggle] = useState<{ assetId: number; enable: boolean; nombre: string } | null>(null);
   const [assetFeedback, setAssetFeedback] = useState<AssetFeedback | null>(null);
-  const [showAllDependencyDistribution, setShowAllDependencyDistribution] =
-    useState(false);
   const scopedInitialAssetDraft = useMemo(
     () => ({
       ...INITIAL_ASSET_DRAFT,
@@ -515,10 +499,6 @@ export function AssetsPage() {
     }),
     [entries],
   );
-  const dependencyDistribution = useMemo(
-    () => buildDependencyDistribution(entries),
-    [entries],
-  );
   const typeFilterOptions = useMemo(
     () =>
       Array.from(
@@ -536,31 +516,36 @@ export function AssetsPage() {
       {
         label: "Total activos",
         value: entries.length,
+        icon: "assets" as const,
         tone: "neutral",
         to: "/activos",
       },
       {
-        label: "Menor",
+        label: "Impacto menor",
         value: impactCounts.MENOR,
+        icon: "checklist" as const,
         tone: "success",
         to: "/activos?impacto=MENOR",
       },
       {
-        label: "Moderado",
+        label: "Impacto moderado",
         value: impactCounts.MODERADO,
+        icon: "risks" as const,
         tone: "warning",
         to: "/activos?impacto=MODERADO",
       },
       {
-        label: "Mayor",
+        label: "Impacto mayor",
         value: impactCounts.MAYOR,
+        icon: "eipd" as const,
         tone: "orange",
         to: "/activos?impacto=MAYOR",
       },
       {
-        label: "Catastrófico",
+        label: "Catastrofico",
         value: impactCounts.CATASTROFICO,
         context: impactCounts.CATASTROFICO > 0 ? "Prioridad inmediata" : undefined,
+        icon: "impact" as const,
         tone: "critical",
         emphasize: impactCounts.CATASTROFICO > 0,
         to: "/activos?impacto=CATASTROFICO",
@@ -623,24 +608,6 @@ export function AssetsPage() {
 
       <ExecutiveKpiGrid items={stats} />
 
-      {!restrictToAssignedDependency ? (
-        <AssetDependencyDistributionPanel
-          distribution={dependencyDistribution}
-          isExpanded={showAllDependencyDistribution}
-          onSelectDependency={(dependencyName) => {
-            if (dependencyName === UNASSIGNED_DEPENDENCY_LABEL) {
-              return;
-            }
-
-            setSearch("");
-            setDependenciaFilter(dependencyName);
-          }}
-          onToggleExpanded={() =>
-            setShowAllDependencyDistribution((current) => !current)
-          }
-          totalAssets={entries.length}
-        />
-      ) : null}
 
       <div className="org-toolbar panel">
         <label className="field">
@@ -988,142 +955,6 @@ function getAssetMutationErrorMessage(error: unknown) {
   }
 
   return fallback;
-}
-
-function AssetDependencyDistributionPanel({
-  distribution,
-  isExpanded,
-  onSelectDependency,
-  onToggleExpanded,
-  totalAssets,
-}: {
-  distribution: AssetDependencyDistribution[];
-  isExpanded: boolean;
-  onSelectDependency: (dependencyName: string) => void;
-  onToggleExpanded: () => void;
-  totalAssets: number;
-}) {
-  const topDependencies = distribution.slice(0, 5);
-  const leader = topDependencies[0];
-  const tableRows = isExpanded ? distribution : [];
-
-  return (
-    <section className="panel asset-distribution-panel">
-      <div className="panel-heading panel-heading-compact">
-        <div>
-          <span className="brand-kicker">Distribucion por dependencia</span>
-          <h3>Top 5 dependencias con mas activos</h3>
-          <p className="asset-distribution-caption">
-            Sobre {totalAssets} activos visibles para el rol actual.
-          </p>
-        </div>
-        <span className="pill">{distribution.length} dependencias</span>
-      </div>
-
-      {distribution.length === 0 ? (
-        <p className="selection-action-empty">No hay activos para distribuir.</p>
-      ) : (
-        <>
-          <div className="asset-distribution-layout">
-            <div className="asset-top-dependencies" aria-label="Top de dependencias por activos">
-              {topDependencies.map((item) => (
-                <button
-                  key={item.dependencyName}
-                  type="button"
-                  className="asset-dependency-bar-row"
-                  title={
-                    item.dependencyName === UNASSIGNED_DEPENDENCY_LABEL
-                      ? "Registro sin dependencia asignada."
-                      : `Filtrar inventario por ${item.dependencyName}.`
-                  }
-                  onClick={() => onSelectDependency(item.dependencyName)}
-                >
-                  <span className="asset-dependency-bar-label">
-                    <strong>{item.dependencyShortName}</strong>
-                    <small>{item.dependencyName}</small>
-                  </span>
-                  <span className="asset-dependency-bar-track" aria-hidden="true">
-                    <span
-                      className="asset-dependency-bar-fill"
-                      style={{ width: `${item.relativeWidth}%` }}
-                    />
-                  </span>
-                  <span className="asset-dependency-bar-value">
-                    <strong>{item.total}</strong>
-                    <small>{formatDistributionPercent(item.share)}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <aside className="asset-distribution-insight">
-              <span className="brand-kicker">Lectura rapida</span>
-              <strong>{leader?.dependencyShortName ?? "Sin datos"}</strong>
-              <p>
-                {leader
-                  ? `${leader.total} activos registrados, ${leader.highImpact} con impacto mayor o catastrofico.`
-                  : "Sin activos visibles para el rol actual."}
-              </p>
-            </aside>
-          </div>
-
-          {distribution.length > 5 ? (
-            <div className="asset-distribution-actions">
-              <button
-                type="button"
-                className="button-table-action"
-                onClick={onToggleExpanded}
-              >
-                {isExpanded ? "Ocultar tabla completa" : "Ver tabla completa"}
-              </button>
-            </div>
-          ) : null}
-
-          {tableRows.length > 0 ? (
-            <TableScrollFrame className="asset-distribution-table-shell" maxHeight="320px">
-              <table className="registry-table asset-distribution-table">
-                <thead>
-                  <tr>
-                    <th>Dependencia</th>
-                    <th>Activos</th>
-                    <th>Participacion</th>
-                    <th>Activos vigentes</th>
-                    <th>Impacto alto</th>
-                    <th>Accion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableRows.map((item) => (
-                    <tr key={item.dependencyName}>
-                      <td>
-                        <strong>{item.dependencyShortName}</strong>
-                        <div className="table-cell-secondary">{item.dependencyName}</div>
-                      </td>
-                      <td className="table-number">{item.total}</td>
-                      <td className="table-number">{formatDistributionPercent(item.share)}</td>
-                      <td className="table-number">{item.active}</td>
-                      <td className="table-number">{item.highImpact}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button-table-action"
-                          disabled={item.dependencyName === UNASSIGNED_DEPENDENCY_LABEL}
-                          title={`Filtrar inventario por ${item.dependencyName}.`}
-                          onClick={() => onSelectDependency(item.dependencyName)}
-                        >
-                          Filtrar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScrollFrame>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
 }
 
 function AssetManagementModal({
@@ -1890,74 +1721,6 @@ const IMPACT_ORDER: AssetImpactKey[] = [
   "MAYOR",
   "CATASTROFICO",
 ];
-
-function buildDependencyDistribution(entries: AssetSummary[]): AssetDependencyDistribution[] {
-  const groups = new Map<string, AssetDependencyDistribution>();
-
-  entries.forEach((entry) => {
-    const dependencyName = entry.dependencia?.trim() || UNASSIGNED_DEPENDENCY_LABEL;
-    const dependencyShortName =
-      entry.siglaDependencia?.trim() ||
-      getDependencyShortName(dependencyName);
-    const current =
-      groups.get(dependencyName) ??
-      {
-        dependencyName,
-        dependencyShortName,
-        total: 0,
-        active: 0,
-        inactive: 0,
-        highImpact: 0,
-        catastrophic: 0,
-        share: 0,
-        relativeWidth: 0,
-      };
-    const impact = getAssetImpactKey(entry);
-
-    current.total += 1;
-    current.active += entry.activo ? 1 : 0;
-    current.inactive += entry.activo ? 0 : 1;
-    current.highImpact += impact === "MAYOR" || impact === "CATASTROFICO" ? 1 : 0;
-    current.catastrophic += impact === "CATASTROFICO" ? 1 : 0;
-    groups.set(dependencyName, current);
-  });
-
-  const rows = Array.from(groups.values()).sort(
-    (left, right) =>
-      right.total - left.total ||
-      left.dependencyShortName.localeCompare(right.dependencyShortName),
-  );
-  const maxTotal = Math.max(...rows.map((item) => item.total), 0);
-  const totalAssets = entries.length;
-
-  return rows.map((item) => ({
-    ...item,
-    share: totalAssets > 0 ? (item.total / totalAssets) * 100 : 0,
-    relativeWidth: maxTotal > 0 ? Math.max(6, (item.total / maxTotal) * 100) : 0,
-  }));
-}
-
-function getDependencyShortName(dependencyName: string) {
-  if (dependencyName === UNASSIGNED_DEPENDENCY_LABEL) {
-    return "S/D";
-  }
-
-  return dependencyName
-    .split(/\s+/)
-    .filter((part) => part.length > 2)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 6)
-    .toUpperCase();
-}
-
-function formatDistributionPercent(value: number) {
-  if (value >= 10) {
-    return `${value.toFixed(0)}%`;
-  }
-
-  return `${value.toFixed(1)}%`;
-}
 
 function getImpactPillClass(entry: Pick<AssetSummary, "impacto" | "impactoCodigo">) {
   switch (getAssetImpactKey(entry)) {

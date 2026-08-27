@@ -13,7 +13,7 @@ import {
   type SignatureFieldState,
 } from "./rat-registry-data";
 import { buildRegistryWorkspace, createRatVersion, persistRatStatus } from "./registry-workspace";
-import { buildReportPreviewDocument } from "./TreatmentReportPreview";
+import { buildReportDocument, printReportDocument } from "./TreatmentReportPreview";
 import { seedTreatmentDraftFromActivity } from "./treatment-draft-storage";
 
 export function RatListPage() {
@@ -105,35 +105,46 @@ export function RatListPage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isPreviewOpen]);
 
-  const signatures = buildSignatureFields(selectedRat);
+  const [signatures, setSignatures] = useState<SignatureFieldState>(
+    () => buildSignatureFields(selectedRat),
+  );
+  useEffect(() => {
+    setSignatures(buildSignatureFields(selectedRat));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRat?.codigo]);
 
-  const stats = useMemo<ExecutiveKpiItem[]>(
-    () => [
+  const stats = useMemo<ExecutiveKpiItem[]>(() => {
+    const vigentes = ratRecords.filter((item) => item.estado === "Vigente").length;
+    const enRevision = ratRecords.filter((item) => item.estado === "En revision").length;
+    const archivados = ratRecords.filter((item) => item.estado === "Archivado").length;
+
+    return [
       {
         label: "RAT registrados",
         value: ratRecords.length,
+        icon: "formalization" as const,
         tone: "neutral",
       },
       {
         label: "Vigentes",
-        value: ratRecords.filter((item) => item.estado === "Vigente").length,
-        tone: "success",
+        value: vigentes,
+        icon: "checklist" as const,
+        tone: vigentes > 0 ? "success" : "neutral",
       },
       {
         label: "En revision",
-        value: ratRecords.filter((item) => item.estado === "En revision").length,
-        tone:
-          ratRecords.some((item) => item.estado === "En revision") ? "warning" : "neutral",
+        value: enRevision,
+        icon: "audit" as const,
+        tone: enRevision > 0 ? "warning" : "neutral",
       },
       {
         label: "Archivados",
-        value: ratRecords.filter((item) => item.estado === "Archivado").length,
-        tone:
-          ratRecords.some((item) => item.estado === "Archivado") ? "warning" : "neutral",
+        value: archivados,
+        icon: "reports" as const,
+        tone: "neutral",
       },
-    ],
-    [ratRecords],
-  );
+    ];
+  }, [ratRecords]);
 
   return (
     <section className="registry-page">
@@ -488,20 +499,16 @@ export function RatListPage() {
           isOpen={isPreviewOpen}
           onClose={() => setIsPreviewOpen(false)}
           onDownload={() => {
-            const surfaceMarkup = previewSurfaceRef.current?.innerHTML;
-
-            if (!surfaceMarkup || typeof document === "undefined") {
-              return;
-            }
-
-            const documentHtml = buildReportPreviewDocument(
+            if (typeof document === "undefined") return;
+            const documentHtml = buildReportDocument(
               `Registro ${selectedActivity.codigo}`,
-              surfaceMarkup,
+              selectedActivity.report,
+              signatures,
+              selectedActivity,
             );
             const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
             const objectUrl = URL.createObjectURL(blob);
             const link = document.createElement("a");
-
             link.href = objectUrl;
             link.download = `${selectedActivity.codigo}-${slugify(selectedActivity.nombre)}.html`;
             document.body.appendChild(link);
@@ -510,17 +517,18 @@ export function RatListPage() {
             URL.revokeObjectURL(objectUrl);
           }}
           onPrint={() => {
-            if (typeof window !== "undefined") {
-              const originalTitle = document.title;
-              document.title = `Registro ${selectedActivity.codigo}`;
-              window.print();
-              window.setTimeout(() => {
-                document.title = originalTitle;
-              }, 250);
-            }
+            printReportDocument(
+              `Registro ${selectedActivity.codigo}`,
+              selectedActivity.report,
+              signatures,
+              selectedActivity,
+            );
           }}
           report={selectedActivity.report}
           signatures={signatures}
+          onSignatureChange={(field, value) =>
+            setSignatures((prev) => ({ ...prev, [field]: value }))
+          }
           surfaceRef={previewSurfaceRef}
         />
       ) : null}
@@ -564,8 +572,10 @@ function buildSignatureFields(record: RatRegistryRecord | null): SignatureFieldS
   return {
     elaboradoPorNombre: record.responsableLevantamiento,
     elaboradoPorCargo: "Responsable del levantamiento RAT",
-    responsableNombre: record.responsableTratamiento,
-    responsableCargo: record.unidadResponsable,
+    revisadoPorNombre: "",
+    revisadoPorCargo: "Asesoria DPD / Delegado de Proteccion de Datos",
+    autoridadNombre: record.responsableTratamiento,
+    autoridadCargo: record.unidadResponsable,
   };
 }
 

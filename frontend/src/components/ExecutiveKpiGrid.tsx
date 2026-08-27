@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { AppIconName } from "./AppIcon";
+import { AppIcon, type AppIconName } from "./AppIcon";
 
 export type ExecutiveKpiTone =
   | "neutral"
@@ -43,14 +43,21 @@ export function ExecutiveKpiGrid({
 
         const content = (
           <>
-            <strong className="executive-kpi-value">{item.value}</strong>
+            <div className="executive-kpi-kv">
+              {item.icon && (
+                <span className="executive-kpi-icon" aria-hidden="true">
+                  <AppIcon name={item.icon} size={15} strokeWidth={2} />
+                </span>
+              )}
+              <strong className="executive-kpi-value">{item.value}</strong>
+            </div>
             <span className="executive-kpi-label">{item.label}</span>
-            {item.context ? (
+            {item.context && (
               <small className="executive-kpi-context">{item.context}</small>
-            ) : null}
-            {item.scope ? (
+            )}
+            {item.scope && (
               <small className="executive-kpi-scope">{item.scope}</small>
-            ) : null}
+            )}
           </>
         );
 

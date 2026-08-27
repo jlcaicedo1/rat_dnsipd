@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
+import iessLogoColor from "../../assets/iess-logo-color.png";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import {
@@ -235,6 +236,13 @@ export function EipdFormPage() {
 
   return (
     <section className="wizard-experience">
+      <div className="print-header">
+        <img src={iessLogoColor} alt="IESS" />
+        <div className="print-header-text">
+          <strong>Instituto Ecuatoriano de Seguridad Social</strong>
+          <small>Evaluacion de Impacto en Proteccion de Datos Personales (EIPD) — {doc?.codigo ?? "—"}</small>
+        </div>
+      </div>
       {/* ── HEADER ── */}
       <header className="panel wizard-page-header">
         <div className="wizard-title-block">

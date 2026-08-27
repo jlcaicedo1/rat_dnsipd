@@ -39,8 +39,10 @@ export type ActivityTraceabilityModel = {
 export type SignatureFieldState = {
   elaboradoPorNombre: string;
   elaboradoPorCargo: string;
-  responsableNombre: string;
-  responsableCargo: string;
+  revisadoPorNombre: string;
+  revisadoPorCargo: string;
+  autoridadNombre: string;
+  autoridadCargo: string;
 };
 
 export type TreatmentReport = {
@@ -699,8 +701,10 @@ const ratRecords: RatRegistryRecord[] = [
 export const defaultSignatureFields: SignatureFieldState = {
   elaboradoPorNombre: "Analista responsable del levantamiento",
   elaboradoPorCargo: "Equipo de proteccion de datos",
-  responsableNombre: "Responsable del tratamiento",
-  responsableCargo: "Director o autoridad de la dependencia",
+  revisadoPorNombre: "",
+  revisadoPorCargo: "Asesoria DPD / Delegado de Proteccion de Datos",
+  autoridadNombre: "",
+  autoridadCargo: "Director/a de la dependencia",
 };
 
 export function getRatRegistryRecords() {

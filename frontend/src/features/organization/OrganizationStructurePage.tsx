@@ -156,31 +156,37 @@ export function OrganizationStructurePage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeUnit]);
 
+  const inactivas = displayedUnits.filter((unit) => unit.status === "Inactiva").length;
+  const sinUso = displayedUnits.filter(
+    (unit) =>
+      countLinkedRats(unit, ratRecords) === 0 &&
+      countLinkedActivities(unit, activityRecords) === 0,
+  ).length;
+
   const stats: ExecutiveKpiItem[] = [
     {
       label: "Total dependencias",
       value: displayedUnits.length,
+      icon: "organization" as const,
       tone: "neutral",
     },
     {
       label: "Activas",
       value: displayedUnits.filter((unit) => unit.status === "Activa").length,
+      icon: "checklist" as const,
       tone: "success",
     },
     {
       label: "Inactivas",
-      value: displayedUnits.filter((unit) => unit.status === "Inactiva").length,
-      tone:
-        displayedUnits.some((unit) => unit.status === "Inactiva") ? "warning" : "neutral",
+      value: inactivas,
+      icon: "risks" as const,
+      tone: inactivas > 0 ? "warning" : "neutral",
     },
     {
-      label: "Sin uso",
-      value: displayedUnits.filter(
-        (unit) =>
-          countLinkedRats(unit, ratRecords) === 0 &&
-          countLinkedActivities(unit, activityRecords) === 0,
-      ).length,
-      tone: "neutral",
+      label: "Sin RAT asignado",
+      value: sinUso,
+      icon: "audit" as const,
+      tone: sinUso > 0 ? "warning" : "success",
     },
   ];
 
