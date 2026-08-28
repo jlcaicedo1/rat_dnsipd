@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -56,5 +58,43 @@ export class CatalogosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.catalogosService.delete(id, user);
+  }
+
+  // ─── CatalogoRelacion endpoints ────────────────────────────────────────────
+
+  @Get("relaciones")
+  findRelaciones(
+    @Query("origenId") origenId?: string,
+    @Query("tipo") tipo?: string,
+  ) {
+    return this.catalogosService.findRelaciones(
+      origenId ? parseInt(origenId, 10) : undefined,
+      tipo,
+    );
+  }
+
+  @Post("relaciones")
+  createRelacion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { origenId: number; destinoId: number; tipo: string; orden?: number },
+  ) {
+    return this.catalogosService.createRelacion(body, user);
+  }
+
+  @Delete("relaciones/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteRelacion(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.catalogosService.deleteRelacion(id, user);
+  }
+
+  @Patch("relaciones/:id/toggle-activo")
+  toggleRelacionActivo(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.catalogosService.toggleRelacionActivo(id, user);
   }
 }

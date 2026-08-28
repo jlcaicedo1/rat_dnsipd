@@ -35,8 +35,12 @@ model Catalogo {
   parentId                      Int?
   orden                         Int                 @default(0)
 
+  metadata                      Json?
+
   parent                        Catalogo?           @relation("CatalogoHierarquia", fields: [parentId], references: [id], onDelete: SetNull)
   children                      Catalogo[]          @relation("CatalogoHierarquia")
+  relacionesOrigen              CatalogoRelacion[]  @relation("RelacionOrigen")
+  relacionesDestino             CatalogoRelacion[]  @relation("RelacionDestino")
   actividadVersionesBaseLicitud ActividadVersion[]
   activosAmbienteInformacion    ActivoInformacion[] @relation("ActivoAmbienteInformacion")
   activosBajaProgramada         ActivoInformacion[] @relation("ActivoBajaProgramada")
@@ -52,6 +56,22 @@ model Catalogo {
   @@index([tipo, codigo])
   @@index([dominio])
   @@index([parentId])
+}
+
+model CatalogoRelacion {
+  id        Int      @id @default(autoincrement())
+  origenId  Int
+  destinoId Int
+  tipo      String
+  activo    Boolean  @default(true)
+  orden     Int      @default(0)
+
+  origen    Catalogo @relation("RelacionOrigen", fields: [origenId], references: [id], onDelete: Cascade)
+  destino   Catalogo @relation("RelacionDestino", fields: [destinoId], references: [id], onDelete: Cascade)
+
+  @@unique([origenId, destinoId, tipo])
+  @@index([origenId, tipo])
+  @@index([destinoId, tipo])
 }
 
 model ParametroSistema {

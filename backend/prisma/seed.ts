@@ -1,4 +1,4 @@
-import { PrismaClient, RoleCode } from "@prisma/client";
+import { Prisma, PrismaClient, RoleCode } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -97,8 +97,8 @@ const CATALOG_TYPE_LABELS: Record<string, string> = {
 
 const CATALOG_DOMAIN_BY_TYPE: Record<string, string> = {
   BASE_LICITUD: "TRATAMIENTOS",
-  TIPO_TITULAR: "TRATAMIENTOS",
-  CATEGORIA_DATO: "TRATAMIENTOS",
+  TIPO_TITULAR: "DATOS_PERSONALES",
+  CATEGORIA_DATO: "DATOS_PERSONALES",
   ORIGEN_DATO: "TRATAMIENTOS",
   ACCION_TRATAMIENTO: "TRATAMIENTOS",
   VOLUMEN_TRATAMIENTO: "TRATAMIENTOS",
@@ -524,6 +524,7 @@ const MASTER_CATALOGS: CatalogSeedItem[] = [
     "Datos relacionados con afiliacion sindical o gremial",
     "Datos de personas con discapacidad y sus sustitutos",
     "Datos de menores de edad",
+    "Datos tecnologicos",
   ]),
   ...buildCatalogSeed("ORIGEN_DATO", [
     "Entrega directa por parte del titular",
@@ -838,6 +839,8 @@ async function main() {
   }
 
   await seedCatalogos();
+  await seedDatosPersonales();
+  await seedCatalogoRelaciones();
   await seedParametrosSistema();
   await seedUsers(dependenciasBySigla);
 }
@@ -1189,6 +1192,323 @@ function resolveDependenciaId(
   }
 
   return dependenciaId;
+}
+
+// ─── Datos Personales: campos y metadata ────────────────────────────────────
+
+type CampoDatoSeed = { codigo: string; nombre: string };
+
+const CAMPOS_BY_CATEGORIA: Record<string, CampoDatoSeed[]> = {
+  DATOS_DE_IDENTIFICACION: [
+    { codigo: "NOMBRES_APELLIDOS", nombre: "Nombres y apellidos" },
+    { codigo: "NUMERO_CEDULA", nombre: "Numero de cedula" },
+    { codigo: "PASAPORTE", nombre: "Pasaporte" },
+    { codigo: "RUC", nombre: "RUC / Identificacion tributaria" },
+    { codigo: "FECHA_NACIMIENTO", nombre: "Fecha de nacimiento" },
+    { codigo: "LUGAR_NACIMIENTO", nombre: "Lugar de nacimiento" },
+    { codigo: "NACIONALIDAD", nombre: "Nacionalidad" },
+    { codigo: "ESTADO_CIVIL", nombre: "Estado civil" },
+    { codigo: "GENERO_SEXO", nombre: "Genero o sexo" },
+    { codigo: "FIRMA_AUTOGRAFA", nombre: "Firma autografa" },
+  ],
+  DATOS_DE_CONTACTO: [
+    { codigo: "DIRECCION_DOMICILIARIA", nombre: "Direccion domiciliaria" },
+    { codigo: "CORREO_ELECTRONICO_PERSONAL", nombre: "Correo electronico personal" },
+    { codigo: "TELEFONO_FIJO", nombre: "Numero de telefono fijo" },
+    { codigo: "NUMERO_CELULAR", nombre: "Numero de celular" },
+    { codigo: "CONTACTO_EMERGENCIA", nombre: "Contacto de emergencia" },
+  ],
+  DATOS_LABORALES: [
+    { codigo: "CARGO_PUESTO", nombre: "Cargo o puesto" },
+    { codigo: "RELACION_LABORAL", nombre: "Relacion laboral" },
+    { codigo: "HISTORIAL_LABORAL", nombre: "Historial laboral" },
+    { codigo: "FECHA_INGRESO", nombre: "Fecha de ingreso" },
+    { codigo: "REMUNERACION", nombre: "Remuneracion o salario" },
+    { codigo: "APORTES_EMPLEADOR", nombre: "Aportes del empleador" },
+    { codigo: "PARTIDA_PRESUPUESTARIA", nombre: "Partida presupuestaria" },
+    { codigo: "REGIMEN_LABORAL", nombre: "Regimen laboral" },
+  ],
+  DATOS_ACADEMICOS: [
+    { codigo: "TITULO_ACADEMICO", nombre: "Titulo academico" },
+    { codigo: "NIVEL_INSTRUCCION", nombre: "Nivel de instruccion" },
+    { codigo: "INSTITUCION_EDUCATIVA", nombre: "Institucion educativa" },
+    { codigo: "FECHA_GRADUACION", nombre: "Fecha de graduacion" },
+    { codigo: "ESPECIALIZACION", nombre: "Especializacion o maestria" },
+    { codigo: "CERTIFICACIONES", nombre: "Certificaciones profesionales" },
+  ],
+  DATOS_DE_SALUD: [
+    { codigo: "DIAGNOSTICO_MEDICO", nombre: "Diagnostico medico" },
+    { codigo: "HISTORIA_CLINICA", nombre: "Historia clinica" },
+    { codigo: "DISCAPACIDAD", nombre: "Tipo de discapacidad y porcentaje" },
+    { codigo: "MEDICACION", nombre: "Medicacion prescrita" },
+    { codigo: "RESULTADOS_EXAMENES", nombre: "Resultados de examenes medicos" },
+    { codigo: "INCAPACIDAD_MEDICA", nombre: "Incapacidad medica" },
+    { codigo: "ATENCIONES_SALUD", nombre: "Atenciones en salud" },
+    { codigo: "TIPO_SANGRE", nombre: "Tipo de sangre" },
+    { codigo: "CONDICION_EMBARAZO", nombre: "Condicion de embarazo" },
+  ],
+  DATOS_BIOMETRICOS: [
+    { codigo: "HUELLA_DACTILAR", nombre: "Huella dactilar" },
+    { codigo: "RECONOCIMIENTO_FACIAL", nombre: "Reconocimiento facial" },
+    { codigo: "FIRMA_DIGITALIZADA", nombre: "Firma digitalizada" },
+    { codigo: "FOTOGRAFIA", nombre: "Fotografia" },
+    { codigo: "PLANTILLA_BIOMETRICA", nombre: "Plantilla biometrica" },
+    { codigo: "IRIS_RETINA", nombre: "Iris o retina" },
+  ],
+  DATOS_FINANCIEROS_BANCARIOS_O_CREDITICIOS: [
+    { codigo: "CUENTA_BANCARIA", nombre: "Numero de cuenta bancaria" },
+    { codigo: "INGRESOS", nombre: "Ingresos declarados" },
+    { codigo: "EGRESOS", nombre: "Egresos o gastos" },
+    { codigo: "DEUDAS_CREDITOS", nombre: "Deudas y creditos" },
+    { codigo: "HISTORIAL_APORTES", nombre: "Historial de aportes previsionales" },
+    { codigo: "FORMA_PAGO", nombre: "Forma de pago" },
+    { codigo: "PATRIMONIO", nombre: "Patrimonio declarado" },
+  ],
+  DATOS_DE_PARENTESCO_O_VINCULO: [
+    { codigo: "CONYUGE", nombre: "Conyuge o conviviente" },
+    { codigo: "HIJOS", nombre: "Hijos o hijas" },
+    { codigo: "DEPENDIENTES", nombre: "Dependientes economicos" },
+    { codigo: "REPRESENTANTE_LEGAL", nombre: "Representante legal" },
+    { codigo: "DERECHOHABIENTES", nombre: "Derechohabientes" },
+    { codigo: "TUTOR_CURADOR", nombre: "Tutor o curador" },
+  ],
+  DATOS_RELACIONADOS_CON_AFILIACION_SINDICAL_O_GREMIAL: [
+    { codigo: "AFILIACION_SINDICAL", nombre: "Afiliacion sindical" },
+    { codigo: "ORGANIZACION_GREMIAL", nombre: "Organizacion gremial" },
+    { codigo: "APORTES_SINDICALES", nombre: "Aportes sindicales" },
+    { codigo: "REPRESENTACION_LABORAL", nombre: "Representacion laboral" },
+    { codigo: "CARGO_SINDICAL", nombre: "Cargo sindical" },
+  ],
+  DATOS_TECNOLOGICOS: [
+    { codigo: "USUARIO_SISTEMA", nombre: "Usuario de sistema o aplicacion" },
+    { codigo: "DIRECCION_IP", nombre: "Direccion IP" },
+    { codigo: "LOGS_ACCESO", nombre: "Logs o registros de acceso" },
+    { codigo: "ID_DISPOSITIVO", nombre: "Identificador de dispositivo" },
+    { codigo: "CORREO_INSTITUCIONAL", nombre: "Correo institucional" },
+    { codigo: "CERTIFICADO_DIGITAL", nombre: "Certificado digital" },
+    { codigo: "TOKEN_AUTENTICACION", nombre: "Token de autenticacion" },
+  ],
+  DATOS_SOCIOECONOMICOS: [
+    { codigo: "NIVEL_SOCIOECONOMICO", nombre: "Nivel socioeconomico" },
+    { codigo: "GRUPO_FAMILIAR", nombre: "Grupo familiar" },
+    { codigo: "TIPO_VIVIENDA", nombre: "Tipo de vivienda" },
+    { codigo: "INGRESOS_HOGAR", nombre: "Ingresos del hogar" },
+    { codigo: "CONDICION_VULNERABILIDAD", nombre: "Condicion de vulnerabilidad" },
+    { codigo: "REQUISITO_ACCESIBILIDAD", nombre: "Requisito de accesibilidad" },
+  ],
+  DATOS_DE_FILIACION: [
+    { codigo: "NOMBRE_PADRE", nombre: "Nombre del padre" },
+    { codigo: "NOMBRE_MADRE", nombre: "Nombre de la madre" },
+    { codigo: "LUGAR_ORIGEN_FAMILIAR", nombre: "Lugar de origen familiar" },
+    { codigo: "VINCULO_FILIACION", nombre: "Vinculo de filiacion legal" },
+  ],
+  DATOS_DE_DIVERSIDAD_Y_AUTOIDENTIFICACION: [
+    { codigo: "AUTOIDENTIFICACION_ETNICA", nombre: "Autoidentificacion etnica" },
+    { codigo: "PUEBLO_NACIONALIDAD", nombre: "Pueblo o nacionalidad indigena" },
+    { codigo: "ORIENTACION_SEXUAL", nombre: "Orientacion sexual" },
+    { codigo: "IDENTIDAD_GENERO", nombre: "Identidad de genero" },
+    { codigo: "RELIGION_CREENCIAS", nombre: "Religion o creencias" },
+  ],
+  DATOS_DE_CONDICION_MIGRATORIA: [
+    { codigo: "TIPO_VISA", nombre: "Tipo de visa" },
+    { codigo: "NUMERO_PASAPORTE_MIG", nombre: "Numero de pasaporte" },
+    { codigo: "CONDICION_MIGRATORIA", nombre: "Condicion migratoria" },
+    { codigo: "PAIS_ORIGEN", nombre: "Pais de origen" },
+    { codigo: "FECHA_INGRESO_PAIS", nombre: "Fecha de ingreso al pais" },
+  ],
+  DATOS_LEGALES_Y_DE_CUMPLIMIENTO_NORMATIVO: [
+    { codigo: "ANTECEDENTES_PENALES", nombre: "Antecedentes penales o judiciales" },
+    { codigo: "PROCESOS_ADMINISTRATIVOS", nombre: "Procesos administrativos" },
+    { codigo: "DECLARACION_JURAMENTADA", nombre: "Declaracion juramentada" },
+    { codigo: "MEDIDAS_CAUTELARES", nombre: "Medidas cautelares" },
+    { codigo: "INHABILITACIONES", nombre: "Inhabilitaciones o sanciones" },
+  ],
+  DATOS_DE_PERSONAS_CON_DISCAPACIDAD_Y_SUS_SUSTITUTOS: [
+    { codigo: "TIPO_DISCAPACIDAD", nombre: "Tipo de discapacidad" },
+    { codigo: "PORCENTAJE_DISCAPACIDAD", nombre: "Porcentaje de discapacidad" },
+    { codigo: "CARNET_CONADIS", nombre: "Carnet del CONADIS" },
+    { codigo: "NOMBRE_SUSTITUTO", nombre: "Nombre del sustituto" },
+    { codigo: "PARENTESCO_SUSTITUTO", nombre: "Parentesco del sustituto" },
+  ],
+  DATOS_DE_MENORES_DE_EDAD: [
+    { codigo: "NOMBRE_MENOR", nombre: "Nombre del menor" },
+    { codigo: "FECHA_NACIMIENTO_MENOR", nombre: "Fecha de nacimiento del menor" },
+    { codigo: "CEDULA_MENOR", nombre: "Numero de cedula del menor" },
+    { codigo: "GRADO_ESCOLAR", nombre: "Grado escolar" },
+    { codigo: "REPRESENTANTE_LEGAL_MENOR", nombre: "Nombre del representante legal" },
+  ],
+};
+
+const SENSITIVE_CATEGORIAS = new Set([
+  "DATOS_DE_SALUD",
+  "DATOS_BIOMETRICOS",
+  "DATOS_RELACIONADOS_CON_AFILIACION_SINDICAL_O_GREMIAL",
+  "DATOS_DE_DIVERSIDAD_Y_AUTOIDENTIFICACION",
+  "DATOS_DE_PERSONAS_CON_DISCAPACIDAD_Y_SUS_SUSTITUTOS",
+  "DATOS_DE_MENORES_DE_EDAD",
+]);
+
+const CHILD_RELATED_CATEGORIAS = new Set([
+  "DATOS_DE_MENORES_DE_EDAD",
+]);
+
+async function seedDatosPersonales() {
+  // Collect all CATEGORIA_DATO root items
+  const categorias = await prisma.catalogo.findMany({
+    where: { tipo: "CATEGORIA_DATO", parentId: null },
+  });
+
+  for (const cat of categorias) {
+    // Update metadata flags on each category
+    const isSensitive = SENSITIVE_CATEGORIAS.has(cat.codigo);
+    const isChildRelated = CHILD_RELATED_CATEGORIAS.has(cat.codigo);
+    const metadata = isSensitive || isChildRelated
+      ? { sensitive: isSensitive, childRelated: isChildRelated }
+      : null;
+
+    await prisma.catalogo.update({
+      where: { id: cat.id },
+      data: { metadata: metadata !== null ? metadata : Prisma.JsonNull },
+    });
+
+    // Insert CAMPO_DATO children
+    const campos = CAMPOS_BY_CATEGORIA[cat.codigo] ?? [];
+    for (let i = 0; i < campos.length; i++) {
+      const campo = campos[i];
+      const existing = await prisma.catalogo.findFirst({
+        where: { tipo: "CAMPO_DATO", codigo: campo.codigo, parentId: cat.id },
+      });
+
+      if (!existing) {
+        await prisma.catalogo.create({
+          data: {
+            dominio: "DATOS_PERSONALES",
+            tipo: "CAMPO_DATO",
+            codigo: campo.codigo,
+            nombre: campo.nombre,
+            parentId: cat.id,
+            orden: i,
+            activo: true,
+          },
+        });
+      } else {
+        await prisma.catalogo.update({
+          where: { id: existing.id },
+          data: { nombre: campo.nombre, orden: i, activo: true },
+        });
+      }
+    }
+  }
+}
+
+// Maps short frontend key → TIPO_TITULAR codigo in DB
+const TITULAR_KEY_TO_CODE: Record<string, string[]> = {
+  afiliados: ["AFILIADOS"],
+  pensionistas: ["PENSIONISTAS"],
+  beneficiarios: ["BENEFICIARIOS"],
+  jubilados: ["JUBILADOS"],
+  derechohabientes: ["DERECHOHABIENTES"],
+  colaboradores: ["COLABORADORES_SERVIDORES_FUNCIONARIOS", "COLABORADORES_TRABAJADORES"],
+  exservidores: ["EXSERVIDORES"],
+  pasantes: ["PASANTES"],
+  practicantes: ["PRACTICANTES_ESTUDIANTILES"],
+  internos: ["INTERNOS_ROTATIVOS"],
+  postulantes: ["POSTULANTES_A_PROCESOS_DE_SELECCION"],
+  empleador: ["EMPLEADOR_PERSONA_NATURAL"],
+  apoderados: ["APODERADOS_O_MANDATARIOS"],
+  contratistas: ["PERSONAL_DE_CONTRATISTAS_O_CONSULTORES"],
+  tutores: ["TUTORES_O_REPRESENTANTES_LEGALES"],
+};
+
+// Maps short frontend key → CATEGORIA_DATO codigo in DB
+const CATEGORIA_KEY_TO_CODE: Record<string, string> = {
+  identificacion: "DATOS_DE_IDENTIFICACION",
+  contacto: "DATOS_DE_CONTACTO",
+  laborales: "DATOS_LABORALES",
+  salud: "DATOS_DE_SALUD",
+  biometricos: "DATOS_BIOMETRICOS",
+  financieros: "DATOS_FINANCIEROS_BANCARIOS_O_CREDITICIOS",
+  socioeconomicos: "DATOS_SOCIOECONOMICOS",
+  familiares: "DATOS_DE_PARENTESCO_O_VINCULO",
+  sindicales: "DATOS_RELACIONADOS_CON_AFILIACION_SINDICAL_O_GREMIAL",
+  tecnologicos: "DATOS_TECNOLOGICOS",
+  menores: "DATOS_DE_MENORES_DE_EDAD",
+  academicos: "DATOS_ACADEMICOS",
+  judiciales: "DATOS_LEGALES_Y_DE_CUMPLIMIENTO_NORMATIVO",
+};
+
+const PERSONAL_DATA_TITULAR_RELATIONSHIPS: Record<string, string[]> = {
+  afiliados: ["identificacion", "contacto", "laborales", "salud", "biometricos", "financieros", "socioeconomicos", "familiares", "sindicales", "tecnologicos"],
+  pensionistas: ["identificacion", "contacto", "laborales", "salud", "financieros", "familiares", "tecnologicos"],
+  beneficiarios: ["identificacion", "contacto", "salud", "familiares", "menores", "socioeconomicos"],
+  jubilados: ["identificacion", "contacto", "laborales", "salud", "financieros", "familiares"],
+  derechohabientes: ["identificacion", "contacto", "salud", "familiares", "menores"],
+  colaboradores: ["identificacion", "contacto", "academicos", "laborales", "salud", "biometricos", "financieros", "judiciales", "sindicales", "tecnologicos"],
+  exservidores: ["identificacion", "contacto", "laborales", "financieros", "judiciales"],
+  pasantes: ["identificacion", "contacto", "academicos", "laborales", "tecnologicos"],
+  practicantes: ["identificacion", "contacto", "academicos", "laborales", "menores"],
+  internos: ["identificacion", "contacto", "academicos", "salud", "tecnologicos"],
+  postulantes: ["identificacion", "contacto", "academicos", "laborales", "judiciales"],
+  empleador: ["identificacion", "contacto", "financieros", "laborales", "tecnologicos"],
+  apoderados: ["identificacion", "contacto", "familiares", "judiciales"],
+  contratistas: ["identificacion", "contacto", "laborales", "judiciales", "tecnologicos"],
+  tutores: ["identificacion", "contacto", "familiares", "menores", "judiciales"],
+};
+
+async function seedCatalogoRelaciones() {
+  // Preload all TIPO_TITULAR and CATEGORIA_DATO items
+  const titulares = await prisma.catalogo.findMany({
+    where: { tipo: "TIPO_TITULAR", parentId: null },
+    select: { id: true, codigo: true },
+  });
+  const categorias = await prisma.catalogo.findMany({
+    where: { tipo: "CATEGORIA_DATO", parentId: null },
+    select: { id: true, codigo: true },
+  });
+
+  const titularByCode = new Map(titulares.map((t) => [t.codigo, t.id]));
+  const categoriaByCode = new Map(categorias.map((c) => [c.codigo, c.id]));
+
+  let orden = 0;
+  for (const [titularKey, categoriaKeys] of Object.entries(PERSONAL_DATA_TITULAR_RELATIONSHIPS)) {
+    const titularCodes = TITULAR_KEY_TO_CODE[titularKey] ?? [];
+    for (const titularCode of titularCodes) {
+      // Find titular with prefix match (codes end with trailing underscore for collaboration types)
+      const titularId = titularByCode.get(titularCode);
+      if (!titularId) {
+        console.warn(`[seed] TIPO_TITULAR no encontrado: ${titularCode}`);
+        continue;
+      }
+
+      for (const catKey of categoriaKeys) {
+        const catCode = CATEGORIA_KEY_TO_CODE[catKey];
+        if (!catCode) continue;
+        const categoriaId = categoriaByCode.get(catCode);
+        if (!categoriaId) {
+          console.warn(`[seed] CATEGORIA_DATO no encontrada: ${catCode}`);
+          continue;
+        }
+
+        await prisma.catalogoRelacion.upsert({
+          where: {
+            origenId_destinoId_tipo: {
+              origenId: titularId,
+              destinoId: categoriaId,
+              tipo: "TITULAR_CATEGORIA",
+            },
+          },
+          update: { activo: true, orden: orden++ },
+          create: {
+            origenId: titularId,
+            destinoId: categoriaId,
+            tipo: "TITULAR_CATEGORIA",
+            activo: true,
+            orden: orden++,
+          },
+        });
+      }
+    }
+  }
 }
 
 function buildCatalogSeed(tipo: string, nombres: string[]): CatalogSeedItem[] {

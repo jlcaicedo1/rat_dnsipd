@@ -1,5 +1,14 @@
 export type CatalogStatus = "Activo" | "Inactivo";
-export type CatalogDomain = "GENERAL" | "TRATAMIENTOS" | "ACTIVOS" | "EIPD" | "RIESGOS";
+export type CatalogDomain = "GENERAL" | "TRATAMIENTOS" | "ACTIVOS" | "EIPD" | "RIESGOS" | "DATOS_PERSONALES";
+
+export type CatalogoRelacion = {
+  id: number;
+  origenId: number;
+  destinoId: number;
+  tipo: string;
+  activo: boolean;
+  orden: number;
+};
 
 export type CatalogEntry = {
   id: number | string;
@@ -24,6 +33,7 @@ export type CatalogTreeItem = {
   activo: boolean;
   parentId: number | null;
   orden: number;
+  metadata?: { sensitive?: boolean; childRelated?: boolean } | null;
   children: CatalogTreeItem[];
 };
 
@@ -70,6 +80,7 @@ export const CATALOG_TYPE_KEYS = {
   PROBABILIDAD_RIESGO: "PROBABILIDAD_RIESGO",
   TIPO_CONTROL_RIESGO: "TIPO_CONTROL_RIESGO",
   CATEGORIA_AMENAZA: "CATEGORIA_AMENAZA",
+  CAMPO_DATO: "CAMPO_DATO",
 } as const;
 
 const TYPE_LABELS: Record<string, string> = {
@@ -105,6 +116,7 @@ const TYPE_LABELS: Record<string, string> = {
   [CATALOG_TYPE_KEYS.PROBABILIDAD_RIESGO]: "Probabilidad del riesgo",
   [CATALOG_TYPE_KEYS.TIPO_CONTROL_RIESGO]: "Tipo de control del riesgo",
   [CATALOG_TYPE_KEYS.CATEGORIA_AMENAZA]: "Categoria de amenaza",
+  [CATALOG_TYPE_KEYS.CAMPO_DATO]: "Campo de dato",
 };
 
 const DOMAIN_LABELS: Record<string, string> = {
@@ -113,6 +125,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   ACTIVOS: "Activos",
   EIPD: "EIPD",
   RIESGOS: "Riesgos",
+  DATOS_PERSONALES: "Datos Personales",
 };
 
 export function buildEmptyCatalogEntry(defaults?: Partial<CatalogEntry>): CatalogEntry {

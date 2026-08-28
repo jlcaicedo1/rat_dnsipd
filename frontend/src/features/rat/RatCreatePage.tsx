@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useDatosPersonales } from "./useDatosPersonales";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "../../services/api-client";
@@ -44,6 +45,7 @@ import {
   FREQUENCY_OPTIONS,
   PERSONAL_DATA_DOMAINS,
   PERSONAL_DATA_TITULAR_RELATIONSHIPS,
+  type PersonalDataDomain,
   RAT_FORM_STEPS,
   RETENTION_PATTERN_OPTIONS,
   SCOPE_OPTIONS,
@@ -271,6 +273,8 @@ export function RatCreatePage() {
     },
   });
 
+  const { domains: pdDomains, relationships: pdRelationships } = useDatosPersonales();
+
   const activosQuery = useQuery({
     queryKey: ["activos", "rat-form", form.dependenciaId],
     enabled: form.dependenciaId.length > 0,
@@ -329,8 +333,8 @@ export function RatCreatePage() {
     DATA_CATEGORY_OPTIONS,
   );
   const selectedPersonalDataCategories = useMemo(
-    () => getSelectedPersonalDataCategoryNames(form),
-    [form],
+    () => getSelectedPersonalDataCategoryNames(form, pdDomains),
+    [form, pdDomains],
   );
   const selectedPersonalDataFields = useMemo(
     () => getSelectedPersonalDataFieldCount(form),
@@ -405,7 +409,7 @@ export function RatCreatePage() {
   const progressTone = getProgressTone(progress);
   const nextLifecycleStatus = getDraftLifecycleStatus(progress);
 
-  const hasSpecialCategories = hasSensitivePersonalData(form);
+  const hasSpecialCategories = hasSensitivePersonalData(form, pdDomains);
   const isLargeScale =
     form.volumenTitulares === "10001 a 100000" ||
     form.volumenTitulares === "100001 en adelante";
@@ -617,6 +621,7 @@ export function RatCreatePage() {
       sourceActivity,
       actorName: user?.nombre?.trim() || user?.username?.trim() || "Responsable del levantamiento",
       registryRecords,
+      domains: pdDomains,
     });
 
     upsertWorkspaceRatRecord(savedRecord);
@@ -641,13 +646,13 @@ export function RatCreatePage() {
           ...current,
           titulares: nextTitulares,
           datosPersonalesDetalle: nextDetail,
-        }),
+        }, pdDomains),
       };
     });
   }
 
   function handleTogglePersonalDataField(titular: string, domainId: string, field: string) {
-    setForm((current) => syncPersonalDataDetail(current, titular, domainId, field));
+    setForm((current) => syncPersonalDataDetail(current, titular, domainId, field, undefined, pdDomains));
   }
 
   function handlePersonalDataJustification(
@@ -656,7 +661,7 @@ export function RatCreatePage() {
     justification: string,
   ) {
     setForm((current) =>
-      syncPersonalDataDetail(current, titular, domainId, undefined, justification),
+      syncPersonalDataDetail(current, titular, domainId, undefined, justification, pdDomains),
     );
   }
 
@@ -995,8 +1000,8 @@ export function RatCreatePage() {
                       ) : (
                         <div className="personal-data-detail-stack">
                           {form.titulares.map((titular) => {
-                            const domainIds = getDomainIdsForTitular(titular);
-                            const domains = getOrderedPersonalDataDomains(domainIds, dataCategoryOptions);
+                            const domainIds = getDomainIdsForTitular(titular, pdRelationships);
+                            const domains = getOrderedPersonalDataDomains(domainIds, dataCategoryOptions, pdDomains);
 
                             return (
                               <article key={titular} className="personal-data-titular-panel">
@@ -1759,6 +1764,7 @@ function syncPersonalDataDetail(
   domainId: string,
   field?: string,
   justification?: string,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
 ): RatDraftForm {
   const titularDetail = current.datosPersonalesDetalle[titular] ?? {};
   const domainSelection = titularDetail[domainId] ?? { fields: [], justification: "" };
@@ -1794,7 +1800,7 @@ function syncPersonalDataDetail(
 
   return {
     ...nextForm,
-    categoriasDatos: getSelectedPersonalDataCategoryNames(nextForm),
+    categoriasDatos: getSelectedPersonalDataCategoryNames(nextForm, domains),
   };
 }
 
@@ -1802,7 +1808,10 @@ function hasPersonalDataDetail(form: RatDraftForm) {
   return getSelectedPersonalDataFieldCount(form) > 0;
 }
 
-function getSelectedPersonalDataCategoryNames(form: RatDraftForm) {
+function getSelectedPersonalDataCategoryNames(
+  form: RatDraftForm,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
   const names = new Set<string>();
 
   for (const titular of form.titulares) {
@@ -1813,7 +1822,7 @@ function getSelectedPersonalDataCategoryNames(form: RatDraftForm) {
         continue;
       }
 
-      const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+      const domain = domains.find((item) => item.id === domainId);
       names.add(domain?.name ?? domainId);
     }
   }
@@ -1840,31 +1849,41 @@ function getTitularSelectedFieldCount(form: RatDraftForm, titular: string) {
   );
 }
 
-function getOrderedPersonalDataDomains(domainIds: string[], catalogCategoryNames: string[]) {
-  const recommendedDomains = PERSONAL_DATA_DOMAINS.filter((domain) => domainIds.includes(domain.id));
+function getOrderedPersonalDataDomains(
+  domainIds: string[],
+  catalogCategoryNames: string[],
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
+  const recommendedDomains = domains.filter((domain) => domainIds.includes(domain.id));
 
   if (recommendedDomains.length > 0) {
     return recommendedDomains;
   }
 
   return catalogCategoryNames
-    .map((name) => PERSONAL_DATA_DOMAINS.find((domain) => normalizeOrgKey(domain.name) === normalizeOrgKey(name)))
-    .filter((domain): domain is (typeof PERSONAL_DATA_DOMAINS)[number] => Boolean(domain));
+    .map((name) => domains.find((domain) => normalizeOrgKey(domain.name) === normalizeOrgKey(name)))
+    .filter((domain): domain is PersonalDataDomain => Boolean(domain));
 }
 
-function getDomainIdsForTitular(titular: string) {
+function getDomainIdsForTitular(
+  titular: string,
+  relationships: Record<string, string[]> = PERSONAL_DATA_TITULAR_RELATIONSHIPS,
+) {
   const normalizedTitular = normalizeOrgKey(titular);
-  const relationshipKey = Object.keys(PERSONAL_DATA_TITULAR_RELATIONSHIPS).find((key) =>
+  const relationshipKey = Object.keys(relationships).find((key) =>
     normalizedTitular.includes(key),
   );
 
   return relationshipKey
-    ? PERSONAL_DATA_TITULAR_RELATIONSHIPS[relationshipKey]
+    ? relationships[relationshipKey]
     : ["identificacion", "contacto"];
 }
 
-function hasSensitivePersonalData(form: RatDraftForm) {
-  const selectedCategories = getSelectedPersonalDataCategoryNames(form);
+function hasSensitivePersonalData(
+  form: RatDraftForm,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
+  const selectedCategories = getSelectedPersonalDataCategoryNames(form, domains);
 
   if (selectedCategories.some((item) => SPECIAL_DATA_CATEGORIES.includes(item))) {
     return true;
@@ -1872,25 +1891,31 @@ function hasSensitivePersonalData(form: RatDraftForm) {
 
   return Object.values(form.datosPersonalesDetalle).some((detail) =>
     Object.keys(detail).some((domainId) =>
-      PERSONAL_DATA_DOMAINS.some((domain) => domain.id === domainId && domain.sensitive),
+      domains.some((domain) => domain.id === domainId && domain.sensitive),
     ),
   );
 }
 
-function hasChildPersonalData(form: RatDraftForm) {
+function hasChildPersonalData(
+  form: RatDraftForm,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
   return Object.values(form.datosPersonalesDetalle).some((detail) =>
     Object.keys(detail).some((domainId) =>
-      PERSONAL_DATA_DOMAINS.some((domain) => domain.id === domainId && domain.childRelated),
+      domains.some((domain) => domain.id === domainId && domain.childRelated),
     ),
   );
 }
 
-function buildSensitivePersonalDataSummary(form: RatDraftForm) {
+function buildSensitivePersonalDataSummary(
+  form: RatDraftForm,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
   const values = new Set<string>();
 
   for (const detail of Object.values(form.datosPersonalesDetalle)) {
     for (const domainId of Object.keys(detail)) {
-      const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+      const domain = domains.find((item) => item.id === domainId);
 
       if (domain?.sensitive) {
         values.add(domain.name);
@@ -1901,14 +1926,17 @@ function buildSensitivePersonalDataSummary(form: RatDraftForm) {
   return values.size > 0 ? formatListValue([...values]) : form.descripcionDatos.trim();
 }
 
-function buildPersonalDataRecords(form: RatDraftForm) {
+function buildPersonalDataRecords(
+  form: RatDraftForm,
+  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
+) {
   return form.titulares.flatMap((titular) => {
     const detail = form.datosPersonalesDetalle[titular] ?? {};
 
     return Object.entries(detail)
       .filter(([, selection]) => selection.fields.length > 0 || selection.justification.trim().length > 0)
       .map(([domainId, selection]) => {
-        const domain = PERSONAL_DATA_DOMAINS.find((item) => item.id === domainId);
+        const domain = domains.find((item) => item.id === domainId);
 
         return {
           titular,
@@ -2109,6 +2137,7 @@ function buildRatRecordFromForm({
   sourceActivity,
   actorName,
   registryRecords,
+  domains,
 }: {
   form: RatDraftForm;
   mode: "create" | TreatmentDraftMode;
@@ -2122,7 +2151,9 @@ function buildRatRecordFromForm({
   sourceActivity: ActivityRegistryRecord | null;
   actorName: string;
   registryRecords: RatRegistryRecord[];
+  domains?: PersonalDataDomain[];
 }): RatRegistryRecord {
+  const _domains = domains ?? PERSONAL_DATA_DOMAINS;
   const today = new Date().toISOString().slice(0, 10);
   const nextStatus = getDraftLifecycleStatus(progress);
   const dependencyName = selectedDependencia?.nombre ?? "Dependencia pendiente";
@@ -2157,10 +2188,10 @@ function buildRatRecordFromForm({
     baseLicitud: form.baseLegal || "Pendiente de documentar",
     normaAplicable: form.descripcionBaseLegal.trim() || "Pendiente de documentar",
     titulares: formatListValue(form.titulares),
-    categoriasDatos: formatListValue(getSelectedPersonalDataCategoryNames(form)),
+    categoriasDatos: formatListValue(getSelectedPersonalDataCategoryNames(form, _domains)),
     datosSensibles:
-      buildSensitivePersonalDataSummary(form) || "No se identifican datos sensibles",
-    datosNna: hasChildPersonalData(form) ? "Si" : "No",
+      buildSensitivePersonalDataSummary(form, _domains) || "No se identifican datos sensibles",
+    datosNna: hasChildPersonalData(form, _domains) ? "Si" : "No",
     origenDatos: form.procedenciaDatos || "Pendiente de documentar",
     mediosRecoleccion: "Pendiente de documentar",
     accionesTratamiento: formatListValue(form.accionesTratamiento),
@@ -2201,7 +2232,7 @@ function buildRatRecordFromForm({
     observaciones: buildObservations(form, selectedElectronicAsset),
     pendientes: buildPendingItems(form, nextStatus, eipdRecommended),
     report: activityReport,
-    datosPersonalesDetalle: buildPersonalDataRecords(form),
+    datosPersonalesDetalle: buildPersonalDataRecords(form, _domains),
   };
 
   return {

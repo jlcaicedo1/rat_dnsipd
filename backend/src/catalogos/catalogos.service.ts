@@ -24,7 +24,17 @@ export type CatalogNode = {
   activo: boolean;
   parentId: number | null;
   orden: number;
+  metadata: unknown;
   children: CatalogNode[];
+};
+
+export type CatalogoRelacionDto = {
+  id: number;
+  origenId: number;
+  destinoId: number;
+  tipo: string;
+  activo: boolean;
+  orden: number;
 };
 
 export type CatalogTreeTipo = {
@@ -330,6 +340,73 @@ export class CatalogosService {
     });
 
     return { data: null, mode: "hard", reason: "Eliminado correctamente." };
+  }
+
+  // ─── CatalogoRelacion CRUD ────────────────────────────────────────────────
+
+  async findRelaciones(origenId?: number, tipo?: string): Promise<{ data: CatalogoRelacionDto[] }> {
+    const where: { origenId?: number; tipo?: string } = {};
+    if (origenId !== undefined) where.origenId = origenId;
+    if (tipo?.trim()) where.tipo = tipo.trim().toUpperCase();
+
+    const data = await this.prisma.catalogoRelacion.findMany({
+      where,
+      orderBy: [{ orden: "asc" }, { id: "asc" }],
+    });
+
+    return { data };
+  }
+
+  async createRelacion(
+    body: { origenId: number; destinoId: number; tipo: string; orden?: number },
+    actor?: AuthenticatedUser,
+  ): Promise<{ data: CatalogoRelacionDto }> {
+    this.authz.assertCanAdministerCatalogs(actor);
+
+    const [origen, destino] = await Promise.all([
+      this.prisma.catalogo.findUnique({ where: { id: body.origenId } }),
+      this.prisma.catalogo.findUnique({ where: { id: body.destinoId } }),
+    ]);
+
+    if (!origen) throw new NotFoundException("Catalogo origen no encontrado.");
+    if (!destino) throw new NotFoundException("Catalogo destino no encontrado.");
+
+    const tipo = body.tipo.trim().toUpperCase();
+
+    const created = await this.prisma.catalogoRelacion.create({
+      data: {
+        origenId: body.origenId,
+        destinoId: body.destinoId,
+        tipo,
+        orden: body.orden ?? 0,
+        activo: true,
+      },
+    });
+
+    return { data: created };
+  }
+
+  async deleteRelacion(id: number, actor?: AuthenticatedUser): Promise<void> {
+    this.authz.assertCanAdministerCatalogs(actor);
+
+    const existing = await this.prisma.catalogoRelacion.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Relacion no encontrada.");
+
+    await this.prisma.catalogoRelacion.delete({ where: { id } });
+  }
+
+  async toggleRelacionActivo(id: number, actor?: AuthenticatedUser): Promise<{ data: CatalogoRelacionDto }> {
+    this.authz.assertCanAdministerCatalogs(actor);
+
+    const existing = await this.prisma.catalogoRelacion.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException("Relacion no encontrada.");
+
+    const updated = await this.prisma.catalogoRelacion.update({
+      where: { id },
+      data: { activo: !existing.activo },
+    });
+
+    return { data: updated };
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
