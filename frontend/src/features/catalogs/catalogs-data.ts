@@ -9,6 +9,32 @@ export type CatalogEntry = {
   descripcion: string;
   activo: boolean;
   dominio?: string;
+  parentId?: number | null;
+  orden?: number;
+};
+
+// Tree types returned by GET /catalogos/tree
+export type CatalogTreeItem = {
+  id: number;
+  dominio: string;
+  tipo: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  parentId: number | null;
+  orden: number;
+  children: CatalogTreeItem[];
+};
+
+export type CatalogTreeTipo = {
+  tipo: string;
+  items: CatalogTreeItem[];
+};
+
+export type CatalogTreeDominio = {
+  dominio: string;
+  tipos: CatalogTreeTipo[];
 };
 
 export const CATALOG_TYPE_KEYS = {
@@ -32,17 +58,13 @@ export const CATALOG_TYPE_KEYS = {
   FUENTE_ACTIVO: "FUENTE_ACTIVO",
   IMPACTO_ACTIVO: "IMPACTO_ACTIVO",
   CLASIFICACION_INFORMACION: "CLASIFICACION_INFORMACION",
-  // Activos — tipos sin definir en el frontend que ya existen como FK en ActivoInformacion
   DATOS_PERSONALES_ACTIVO: "DATOS_PERSONALES_ACTIVO",
   BAJA_PROGRAMADA_ACTIVO: "BAJA_PROGRAMADA_ACTIVO",
   PROPIEDAD_INTELECTUAL_ACTIVO: "PROPIEDAD_INTELECTUAL_ACTIVO",
-  // EIPD
   CRITERIO_EIPD: "CRITERIO_EIPD",
   MEDIDA_TIPO_EIPD: "MEDIDA_TIPO_EIPD",
   TIPO_SALVAGUARDA_INTERNACIONAL: "TIPO_SALVAGUARDA_INTERNACIONAL",
-  // Actividades / General
   PERIODICIDAD_REVISION: "PERIODICIDAD_REVISION",
-  // Riesgos (seed disponible, módulo pendiente)
   NIVEL_RIESGO: "NIVEL_RIESGO",
   DIMENSION_RIESGO: "DIMENSION_RIESGO",
   PROBABILIDAD_RIESGO: "PROBABILIDAD_RIESGO",
@@ -66,8 +88,7 @@ const TYPE_LABELS: Record<string, string> = {
   [CATALOG_TYPE_KEYS.TIPO_ACTIVO]: "Tipo del activo",
   [CATALOG_TYPE_KEYS.NIVEL_ACTIVO]: "Nivel del activo",
   [CATALOG_TYPE_KEYS.AMBIENTE_ACTIVO]: "Ambiente del activo",
-  [CATALOG_TYPE_KEYS.CLASIFICACION_INFO_ACTIVO]:
-    "Clasificacion de informacion del activo",
+  [CATALOG_TYPE_KEYS.CLASIFICACION_INFO_ACTIVO]: "Clasificacion de informacion del activo",
   [CATALOG_TYPE_KEYS.VISIBILIDAD_INTERNET]: "Visibilidad desde internet",
   [CATALOG_TYPE_KEYS.FUENTE_ACTIVO]: "Fuente del activo",
   [CATALOG_TYPE_KEYS.IMPACTO_ACTIVO]: "Impacto del activo",
@@ -94,7 +115,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   RIESGOS: "Riesgos",
 };
 
-export function buildEmptyCatalogEntry(): CatalogEntry {
+export function buildEmptyCatalogEntry(defaults?: Partial<CatalogEntry>): CatalogEntry {
   return {
     id: `catalog-${Date.now()}`,
     tipo: CATALOG_TYPE_KEYS.BASE_LICITUD,
@@ -103,6 +124,9 @@ export function buildEmptyCatalogEntry(): CatalogEntry {
     descripcion: "",
     activo: true,
     dominio: "GENERAL",
+    parentId: null,
+    orden: 0,
+    ...defaults,
   };
 }
 
@@ -117,10 +141,7 @@ export function formatCatalogTypeLabel(tipo: string) {
 }
 
 export function formatCatalogDomainLabel(dominio?: string | null) {
-  if (!dominio) {
-    return DOMAIN_LABELS.GENERAL;
-  }
-
+  if (!dominio) return DOMAIN_LABELS.GENERAL;
   return DOMAIN_LABELS[dominio] ?? titleFromKey(dominio);
 }
 
@@ -147,10 +168,16 @@ export function getCatalogNamesByType(
 ) {
   const names = entries
     .filter((entry) => entry.tipo === tipo && entry.activo)
+    .sort((a, b) => ((a.orden ?? 0) - (b.orden ?? 0)) || a.nombre.localeCompare(b.nombre))
     .map((entry) => entry.nombre.trim())
     .filter((value) => value.length > 0);
 
   return names.length > 0 ? names : fallback;
+}
+
+// Count active items at all depths including sub-children
+export function countTreeItems(items: CatalogTreeItem[]): number {
+  return items.reduce((acc, item) => acc + 1 + countTreeItems(item.children), 0);
 }
 
 function titleFromKey(value: string) {

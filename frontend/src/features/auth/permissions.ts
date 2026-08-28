@@ -76,6 +76,7 @@ type RoleCapabilities = {
     update: boolean;
     updateStatus: boolean;
     save: boolean;
+    delete: boolean;
   };
   users: {
     view: boolean;
@@ -220,6 +221,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: true,
           updateStatus: true,
           save: true,
+          delete: true,
         },
         users: {
           view: true,
@@ -270,6 +272,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: true,
           updateStatus: true,
           save: true,
+          delete: true,
         },
         users: {
           view: false,
@@ -323,6 +326,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: false,
           updateStatus: false,
           save: false,
+          delete: false,
         },
         users: {
           view: false,
@@ -386,6 +390,7 @@ export function getRoleCapabilities(role?: string | null): RoleCapabilities {
           update: false,
           updateStatus: false,
           save: false,
+          delete: false,
         },
         users: {
           view: false,

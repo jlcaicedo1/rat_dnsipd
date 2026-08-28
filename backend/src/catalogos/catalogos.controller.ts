@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -27,6 +28,11 @@ export class CatalogosController {
     return this.catalogosService.findAll(query);
   }
 
+  @Get("tree")
+  findTree(@Query() query: QueryCatalogoDto) {
+    return this.catalogosService.findTree(query);
+  }
+
   @Post()
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -42,5 +48,13 @@ export class CatalogosController {
     @Body() dto: UpdateCatalogoDto,
   ) {
     return this.catalogosService.update(id, dto, user);
+  }
+
+  @Delete(":id")
+  delete(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.catalogosService.delete(id, user);
   }
 }

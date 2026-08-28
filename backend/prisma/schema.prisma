@@ -32,6 +32,11 @@ model Catalogo {
   nombre                        String
   descripcion                   String?
   activo                        Boolean             @default(true)
+  parentId                      Int?
+  orden                         Int                 @default(0)
+
+  parent                        Catalogo?           @relation("CatalogoHierarquia", fields: [parentId], references: [id], onDelete: SetNull)
+  children                      Catalogo[]          @relation("CatalogoHierarquia")
   actividadVersionesBaseLicitud ActividadVersion[]
   activosAmbienteInformacion    ActivoInformacion[] @relation("ActivoAmbienteInformacion")
   activosBajaProgramada         ActivoInformacion[] @relation("ActivoBajaProgramada")
@@ -44,7 +49,9 @@ model Catalogo {
   activosTipoInformacion        ActivoInformacion[] @relation("ActivoTipoInformacion")
   activosVisibleInternet        ActivoInformacion[] @relation("ActivoVisibleInternet")
 
-  @@unique([tipo, codigo])
+  @@index([tipo, codigo])
+  @@index([dominio])
+  @@index([parentId])
 }
 
 model ParametroSistema {

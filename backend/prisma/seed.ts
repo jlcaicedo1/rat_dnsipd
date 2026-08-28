@@ -1012,21 +1012,23 @@ async function mergeSubdireccionDuplicates(canonicalId: number, duplicates: Arra
 
 async function seedCatalogos() {
   for (const item of MASTER_CATALOGS) {
-    await prisma.catalogo.upsert({
-      where: {
-        tipo_codigo: {
-          tipo: item.tipo,
-          codigo: item.codigo,
-        },
-      },
-      update: {
-        dominio: item.dominio,
-        nombre: item.nombre,
-        descripcion: item.descripcion,
-        activo: true,
-      },
-      create: item,
+    const existing = await prisma.catalogo.findFirst({
+      where: { tipo: item.tipo, codigo: item.codigo, parentId: null },
     });
+
+    if (existing) {
+      await prisma.catalogo.update({
+        where: { id: existing.id },
+        data: {
+          dominio: item.dominio,
+          nombre: item.nombre,
+          descripcion: item.descripcion,
+          activo: true,
+        },
+      });
+    } else {
+      await prisma.catalogo.create({ data: item });
+    }
   }
 }
 

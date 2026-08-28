@@ -277,8 +277,8 @@ export class ImportRatService {
       }
       catCodeMap.set(raw, code);
 
-      const existing = await this.prisma.catalogo.findUnique({
-        where: { tipo_codigo: { tipo: 'CATEGORIA_DATO', codigo: code } },
+      const existing = await this.prisma.catalogo.findFirst({
+        where: { tipo: 'CATEGORIA_DATO', codigo: code, parentId: null },
       });
 
       if (!existing) {

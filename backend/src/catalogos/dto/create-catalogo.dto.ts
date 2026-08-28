@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateCatalogoDto {
   @IsOptional()
@@ -21,4 +21,13 @@ export class CreateCatalogoDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  parentId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  orden?: number;
 }
