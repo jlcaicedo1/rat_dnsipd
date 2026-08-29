@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { AppIcon } from "../../components/AppIcon";
 import { apiClient } from "../../services/api-client";
 import { useAuthStore } from "../auth/auth-store";
@@ -33,14 +32,11 @@ export function CatalogsPage() {
   const [deleteResult, setDeleteResult] = useState<{ mode: string; reason: string } | null>(null);
   const [search, setSearch] = useState("");
 
-  // Fetch tree (excludes ACTIVOS domain — same as current page)
   const treeQuery = useQuery({
     queryKey: ["catalogos", "tree"],
     queryFn: async () => {
       const res = await apiClient.get<TreeResponse>("/catalogos/tree");
-      return res.data.data.filter(
-        (d) => d.dominio.trim().toUpperCase() !== "ACTIVOS",
-      );
+      return res.data.data;
     },
   });
 
@@ -139,9 +135,6 @@ export function CatalogsPage() {
         </div>
 
         <div className="registry-header-actions">
-          <Link to="/catalogos/activos" className="button-secondary">
-            Catalogos de activos
-          </Link>
           {caps.catalogs.create && (
             <button
               type="button"

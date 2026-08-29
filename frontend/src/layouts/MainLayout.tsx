@@ -5,7 +5,8 @@ import { AppIcon, type AppIconName } from "../components/AppIcon";
 import { TopNav } from "../components/TopNav";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
-import iessLogo from "../assets/iess-logo.png"; // kept for print-header only
+import iessLogo from "../assets/iess-logo.png";
+import iessLogoColor from "../assets/iess-logo-color.png";
 
 const navSections = [
   {
@@ -98,45 +99,54 @@ export function MainLayout() {
       />
 
       <aside className="sidebar sidebar-dark">
-        <div className="sidebar-header">
-          <button
-            type="button"
-            className="sidebar-collapse-button"
-            aria-label={isSidebarCollapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
-            title={isSidebarCollapsed ? "Expandir" : "Contraer"}
-            onClick={() => setIsSidebarCollapsed((current) => !current)}
-          >
-            {isSidebarCollapsed ? (
-              <PanelLeftOpen size={18} strokeWidth={2.2} />
-            ) : (
-              <PanelLeftClose size={18} strokeWidth={2.2} />
-            )}
-          </button>
+        <div className="sidebar-brand">
+          <img src={iessLogoColor} alt="IESS" className="sidebar-brand-logo" />
+          <div className="sidebar-brand-text">
+            <span className="sidebar-brand-name">Instituto Ecuatoriano de Seguridad Social</span>
+            <span className="sidebar-brand-dept">DNSIPD · Sistema RAT</span>
+          </div>
         </div>
-        <nav className="nav">
-          {visibleSections.map((section) => (
-            <div key={section.title} className="nav-section">
-              <span className="nav-section-title">{section.title}</span>
-              {section.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    isActive ? "nav-link nav-link-active" : "nav-link"
-                  }
-                  title={item.label}
-                >
-                  <span className="nav-link-content">
-                    <span className="nav-link-icon">
-                      <AppIcon name={item.icon} size={17} strokeWidth={2.1} />
+        <div className="sidebar-body">
+          <div className="sidebar-header">
+            <button
+              type="button"
+              className="sidebar-collapse-button"
+              aria-label={isSidebarCollapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
+              title={isSidebarCollapsed ? "Expandir" : "Contraer"}
+              onClick={() => setIsSidebarCollapsed((current) => !current)}
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen size={18} strokeWidth={2.2} />
+              ) : (
+                <PanelLeftClose size={18} strokeWidth={2.2} />
+              )}
+            </button>
+          </div>
+          <nav className="nav">
+            {visibleSections.map((section) => (
+              <div key={section.title} className="nav-section">
+                <span className="nav-section-title">{section.title}</span>
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      isActive ? "nav-link nav-link-active" : "nav-link"
+                    }
+                    title={item.label}
+                  >
+                    <span className="nav-link-content">
+                      <span className="nav-link-icon">
+                        <AppIcon name={item.icon} size={17} strokeWidth={2.1} />
+                      </span>
+                      <span className="nav-link-label">{item.label}</span>
                     </span>
-                    <span className="nav-link-label">{item.label}</span>
-                  </span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+        </div>
       </aside>
       <main className="content">
         <div className="print-header" aria-hidden="true">

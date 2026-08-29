@@ -588,8 +588,8 @@ export function AssetsPage() {
         </div>
 
         <div className="registry-header-actions">
-          <Link to="/catalogos/activos" className="button-secondary">
-            Catalogos de activos
+          <Link to="/catalogos" className="button-secondary">
+            Catalogos del sistema
           </Link>
           {roleCapabilities.assets.create ? (
             <button

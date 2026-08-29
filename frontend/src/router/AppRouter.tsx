@@ -8,7 +8,6 @@ import { RequireAuth } from "../features/auth/RequireAuth";
 import { AuditLogPage } from "../features/audit/AuditLogPage";
 import { ActivitiesPage } from "../features/activities-page/ActivitiesPage";
 import { AssetsPage } from "../features/assets/AssetsPage";
-import { AssetCatalogsPage } from "../features/catalogs/AssetCatalogsPage";
 import { CatalogsPage } from "../features/catalogs/CatalogsPage";
 import type { ExecutiveKpiItem } from "../components/ExecutiveKpiGrid";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
@@ -135,11 +134,7 @@ export function AppRouter() {
           />
           <Route
             path="catalogos/activos"
-            element={
-              <ModuleAccessGate module="catalogs">
-                <AssetCatalogsPage />
-              </ModuleAccessGate>
-            }
+            element={<Navigate to="/catalogos" replace />}
           />
           {modulePages.map((page) => (
             <Route

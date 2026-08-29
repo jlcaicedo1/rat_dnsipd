@@ -1,6 +1,5 @@
 import { LogOut, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import iessLogoColor from "../assets/iess-logo-color.png";
 import { useAuthStore } from "../features/auth/auth-store";
 import { getRoleCapabilities } from "../features/auth/permissions";
 import { NotificationBell } from "../features/notifications/NotificationBell";
@@ -24,23 +23,14 @@ export function TopNav({ onMobileMenuToggle }: TopNavProps) {
 
   return (
     <header className="top-nav">
-      <div className="top-nav-left">
-        <button
-          type="button"
-          className="top-nav-mobile-toggle"
-          aria-label="Abrir menu lateral"
-          onClick={onMobileMenuToggle}
-        >
-          <Menu size={19} strokeWidth={2} />
-        </button>
-        <div className="top-nav-brand">
-          <img src={iessLogoColor} alt="IESS" className="top-nav-logo" />
-          <div className="top-nav-iess-info">
-            <span className="top-nav-iess-inst">Instituto Ecuatoriano de Seguridad Social</span>
-            <span className="top-nav-iess-dept">DNSIPD · Sistema RAT</span>
-          </div>
-        </div>
-      </div>
+      <button
+        type="button"
+        className="top-nav-mobile-toggle"
+        aria-label="Abrir menu lateral"
+        onClick={onMobileMenuToggle}
+      >
+        <Menu size={19} strokeWidth={2} />
+      </button>
 
       <div className="top-nav-right">
         <div className="top-nav-user">
