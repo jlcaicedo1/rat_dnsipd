@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AppIcon, type AppIconName } from "../components/AppIcon";
-import { TopNav } from "../components/TopNav";
 import { useAuthStore } from "../features/auth/auth-store";
 import { canAccessModule, getRoleCapabilities } from "../features/auth/permissions";
+import { NotificationBell } from "../features/notifications/NotificationBell";
 import iessLogo from "../assets/iess-logo.png";
 import iessLogoColor from "../assets/iess-logo-color.png";
 
@@ -45,10 +45,16 @@ const navSections = [
   items: Array<{ to: string; label: string; icon: AppIconName }>;
 }>;
 
+function getInitials(nombre: string) {
+  return nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+}
+
 export function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const cap = getRoleCapabilities(user?.role);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === "undefined") {
@@ -79,6 +85,11 @@ export function MainLayout() {
     );
   }, [isSidebarCollapsed]);
 
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   const shellClassName = [
     "app-shell",
     isSidebarOpen ? "app-shell-mobile-open" : "",
@@ -89,77 +100,110 @@ export function MainLayout() {
 
   return (
     <>
-      <TopNav onMobileMenuToggle={() => setIsSidebarOpen((v) => !v)} />
-    <div className={shellClassName}>
-      <button
-        type="button"
-        className={isSidebarOpen ? "sidebar-overlay sidebar-overlay-visible" : "sidebar-overlay"}
-        aria-label="Cerrar menu"
-        onClick={() => setIsSidebarOpen(false)}
-      />
-
-      <aside className="sidebar sidebar-dark">
-        <div className="sidebar-brand">
-          <img src={iessLogoColor} alt="IESS" className="sidebar-brand-logo" />
-          <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">Instituto Ecuatoriano de Seguridad Social</span>
-            <span className="sidebar-brand-dept">DNSIPD · Sistema RAT</span>
-          </div>
+      {/* ── Institutional header — full width ── */}
+      <header className="iess-header">
+        <button
+          type="button"
+          className="iess-header-menu-toggle"
+          aria-label="Abrir menu lateral"
+          onClick={() => setIsSidebarOpen((v) => !v)}
+        >
+          <Menu size={20} strokeWidth={2} />
+        </button>
+        <img src={iessLogoColor} alt="IESS" className="iess-header-logo" />
+        <div className="iess-header-info">
+          <span className="iess-header-inst">Instituto Ecuatoriano de Seguridad Social</span>
+          <strong className="iess-header-dept">
+            Dirección Nacional de Seguridad de la Información y Protección de Datos
+          </strong>
+          <span className="iess-header-sub">DNSIPD</span>
         </div>
-        <div className="sidebar-body">
-          <div className="sidebar-header">
-            <button
-              type="button"
-              className="sidebar-collapse-button"
-              aria-label={isSidebarCollapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
-              title={isSidebarCollapsed ? "Expandir" : "Contraer"}
-              onClick={() => setIsSidebarCollapsed((current) => !current)}
-            >
-              {isSidebarCollapsed ? (
-                <PanelLeftOpen size={18} strokeWidth={2.2} />
-              ) : (
-                <PanelLeftClose size={18} strokeWidth={2.2} />
-              )}
-            </button>
+        <div className="iess-header-actions">
+          <div className="top-nav-user">
+            <div className="top-nav-avatar">{getInitials(user?.nombre ?? "")}</div>
+            <div className="top-nav-user-info">
+              <strong>{user?.nombre ?? "Usuario"}</strong>
+              <small>{cap.label}</small>
+            </div>
           </div>
-          <nav className="nav">
-            {visibleSections.map((section) => (
-              <div key={section.title} className="nav-section">
-                <span className="nav-section-title">{section.title}</span>
-                {section.items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      isActive ? "nav-link nav-link-active" : "nav-link"
-                    }
-                    title={item.label}
-                  >
-                    <span className="nav-link-content">
-                      <span className="nav-link-icon">
-                        <AppIcon name={item.icon} size={17} strokeWidth={2.1} />
+          <div className="top-nav-sep" aria-hidden="true" />
+          <NotificationBell />
+          <button
+            type="button"
+            className="top-nav-logout"
+            title="Cerrar sesion"
+            onClick={handleLogout}
+          >
+            <LogOut size={15} strokeWidth={2.2} />
+            <span className="top-nav-logout-text">Salir</span>
+          </button>
+        </div>
+      </header>
+
+      <div className={shellClassName}>
+        <button
+          type="button"
+          className={isSidebarOpen ? "sidebar-overlay sidebar-overlay-visible" : "sidebar-overlay"}
+          aria-label="Cerrar menu"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+
+        <aside className="sidebar sidebar-dark">
+          <div className="sidebar-body">
+            <div className="sidebar-header">
+              <button
+                type="button"
+                className="sidebar-collapse-button"
+                aria-label={isSidebarCollapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
+                title={isSidebarCollapsed ? "Expandir" : "Contraer"}
+                onClick={() => setIsSidebarCollapsed((current) => !current)}
+              >
+                {isSidebarCollapsed ? (
+                  <PanelLeftOpen size={18} strokeWidth={2.2} />
+                ) : (
+                  <PanelLeftClose size={18} strokeWidth={2.2} />
+                )}
+              </button>
+            </div>
+            <nav className="nav">
+              {visibleSections.map((section) => (
+                <div key={section.title} className="nav-section">
+                  <span className="nav-section-title">{section.title}</span>
+                  {section.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        isActive ? "nav-link nav-link-active" : "nav-link"
+                      }
+                      title={item.label}
+                    >
+                      <span className="nav-link-content">
+                        <span className="nav-link-icon">
+                          <AppIcon name={item.icon} size={17} strokeWidth={2.1} />
+                        </span>
+                        <span className="nav-link-label">{item.label}</span>
                       </span>
-                      <span className="nav-link-label">{item.label}</span>
-                    </span>
-                  </NavLink>
-                ))}
-              </div>
-            ))}
-          </nav>
-        </div>
-      </aside>
-      <main className="content">
-        <div className="print-header" aria-hidden="true">
-          <img src={iessLogo} alt="IESS — Instituto Ecuatoriano de Seguridad Social" />
-          <div className="print-header-text">
-            <strong>Instituto Ecuatoriano de Seguridad Social</strong>
-            <small>Direccion Nacional de Tecnologias de la Informacion · Sistema de Proteccion de Datos</small>
+                    </NavLink>
+                  ))}
+                </div>
+              ))}
+            </nav>
           </div>
-        </div>
+        </aside>
 
-        <Outlet />
-      </main>
-    </div>
+        <main className="content">
+          <div className="print-header" aria-hidden="true">
+            <img src={iessLogo} alt="IESS — Instituto Ecuatoriano de Seguridad Social" />
+            <div className="print-header-text">
+              <strong>Instituto Ecuatoriano de Seguridad Social</strong>
+              <small>Direccion Nacional de Tecnologias de la Informacion · Sistema de Proteccion de Datos</small>
+            </div>
+          </div>
+
+          <Outlet />
+        </main>
+      </div>
     </>
   );
 }
