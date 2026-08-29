@@ -232,7 +232,7 @@ export function RatCreatePage() {
     () => (draftMode === "create" ? null : loadTreatmentDraft()),
     [draftMode],
   );
-  const [activeStep, setActiveStep] = useState(0);
+  const [openSections, setOpenSections] = useState(new Set<number>());
   const [form, setForm] = useState<RatDraftForm>(() =>
     draftPayload ? { ...INITIAL_FORM, ...coerceDraftValues(draftPayload.values) } : INITIAL_FORM,
   );
@@ -400,13 +400,10 @@ export function RatCreatePage() {
   }));
 
   const generatedCode = buildRatCode(selectedDependencia?.sigla ?? null);
-  const currentStep = RAT_FORM_STEPS[activeStep];
   const stepProgress = STEP_REQUIREMENTS.map((checks) => getStepProgress(form, checks));
-  const currentStepProgress = stepProgress[activeStep] ?? { completed: 0, total: 0 };
   const completedRequired = stepProgress.reduce((sum, item) => sum + item.completed, 0);
   const totalRequired = stepProgress.reduce((sum, item) => sum + item.total, 0);
   const progress = totalRequired > 0 ? Math.round((completedRequired / totalRequired) * 100) : 0;
-  const progressTone = getProgressTone(progress);
   const nextLifecycleStatus = getDraftLifecycleStatus(progress);
 
   const hasSpecialCategories = hasSensitivePersonalData(form, pdDomains);
@@ -665,6 +662,26 @@ export function RatCreatePage() {
     );
   }
 
+  function toggleSection(index: number) {
+    setOpenSections((current) => {
+      const next = new Set(current);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }
+
+  function expandAll() {
+    setOpenSections(new Set(RAT_FORM_STEPS.map((_, i) => i)));
+  }
+
+  function collapseAll() {
+    setOpenSections(new Set());
+  }
+
   return (
     <section className="wizard-experience">
       <header className="panel wizard-page-header">
@@ -710,25 +727,30 @@ export function RatCreatePage() {
         </div>
       </header>
 
-      <section className="panel wizard-overview">
-        <div className="wizard-overview-row">
+      {dependenciasQuery.isError ? (
+        <div className="error-box" style={{ marginBottom: 12 }}>{organizationLoadErrorMessage}</div>
+      ) : null}
+
+      {catalogosQuery.isError ? (
+        <div className="error-box" style={{ marginBottom: 12 }}>{catalogsLoadErrorMessage}</div>
+      ) : null}
+
+      <section className="rat-progress-card">
+        <div className="rat-progress-head">
           <div>
-            <span className="wizard-overview-label">Progreso del registro</span>
-            <p>Complete los campos requeridos por etapa antes de enviar a revision.</p>
+            <div className="rat-progress-label">Progreso del registro</div>
+            <div className="rat-progress-sub">
+              Complete los campos requeridos por etapa antes de enviar a revision.
+            </div>
           </div>
-          <strong className="wizard-progress-value">{progress}%</strong>
+          <strong className="rat-progress-pct">{progress}%</strong>
         </div>
-
-        <div
-          className="progress-bar wizard-progress-bar"
-          style={{ ["--wizard-progress-tone" as string]: progressTone }}
-        >
-          <span style={{ width: `${progress}%` }} />
+        <div className="rat-progress-track">
+          <div className="rat-progress-fill" style={{ width: `${progress}%` }} />
         </div>
-
-        <div className="wizard-summary-grid">
+        <div className="rat-summary-grid">
           {summaryItems.map((item) => (
-            <article key={item.label} className="wizard-summary-card">
+            <article key={item.label} className="rat-summary-item">
               <span>{item.label}</span>
               <strong>{item.value}</strong>
             </article>
@@ -736,65 +758,41 @@ export function RatCreatePage() {
         </div>
       </section>
 
-      <div className="wizard-layout wizard-layout-refined">
-        <aside className="panel wizard-rail">
-          <div className="wizard-rail-header">
-            <span className="brand-kicker">Secciones</span>
-          </div>
+      <div className="rat-form-toolbar">
+        <span className="rat-form-toolbar-title">Secciones del formulario</span>
+        <div style={{ display: "flex", gap: "7px" }}>
+          <button
+            type="button"
+            className="button-ghost"
+            style={{ fontSize: "12px", padding: "4px 9px" }}
+            onClick={expandAll}
+          >
+            Expandir todas
+          </button>
+          <button
+            type="button"
+            className="button-ghost"
+            style={{ fontSize: "12px", padding: "4px 9px" }}
+            onClick={collapseAll}
+          >
+            Contraer todas
+          </button>
+        </div>
+      </div>
 
-          {RAT_FORM_STEPS.map((item, index) => {
-            const itemProgress = stepProgress[index];
-            const stepStatus = getStepStatus(index, activeStep, itemProgress);
-            const stepStatusLabel = getStepStatusLabel(stepStatus);
-
-            return (
-              <button
-                key={item.title}
-                type="button"
-                className={`wizard-step-card wizard-step-card-${stepStatus}`}
-                onClick={() => setActiveStep(index)}
-              >
-                <span className="wizard-step-index">{index + 1}</span>
-                <span className="wizard-step-copy">
-                  <strong>{item.title}</strong>
-                  <small>{stepStatusLabel}</small>
-                </span>
-              </button>
-            );
-          })}
-        </aside>
-
-        <div className="wizard-main">
-          <section className="panel wizard-stage">
-            <div className="wizard-stage-header">
-              <div>
-                <h3>{currentStep.title}</h3>
-                <p>{currentStep.help}</p>
-              </div>
-              <div className="wizard-stage-badges">
-                <span className={`status-pill status-pill-${normalizeWizardStepStatus(getStepStatus(activeStep, activeStep, currentStepProgress))}`}>
-                  {getStepStatusLabel(getStepStatus(activeStep, activeStep, currentStepProgress))}
-                </span>
-                {currentStepProgress.total > 0 ? (
-                  <span className="pill pill-muted">
-                    {currentStepProgress.completed}/{currentStepProgress.total} requeridos
-                  </span>
-                ) : (
-                  <span className="pill pill-muted">Sin obligatorios</span>
-                )}
-              </div>
-            </div>
-
-            {dependenciasQuery.isError ? (
-              <div className="error-box">{organizationLoadErrorMessage}</div>
-            ) : null}
-
-            {catalogosQuery.isError ? (
-              <div className="error-box">{catalogsLoadErrorMessage}</div>
-            ) : null}
-
-            {activeStep === 0 ? (
-              <div className="wizard-section-stack">
+      <div className="rat-section-list">
+        <AccordionStep
+          index={0}
+          isOpen={openSections.has(0)}
+          onToggle={() => toggleSection(0)}
+          title="Identificacion"
+          desc="Defina el RAT, la unidad responsable y la unidad ejecutora desde estructura organica controlada."
+          progress={stepProgress[0]}
+          contextHint="La seccion reune la informacion basica del tratamiento. Seleccione primero la dependencia responsable para activar la dependencia ejecutora correspondiente."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Contexto organizacional"
                   description="Selecciona primero la dependencia responsable para activar la dependencia ejecutora correspondiente."
@@ -898,11 +896,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 1 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={1}
+          isOpen={openSections.has(1)}
+          onToggle={() => toggleSection(1)}
+          title="Finalidad y base de licitud"
+          desc="Defina para que se realiza el tratamiento y el fundamento legal aplicable."
+          progress={stepProgress[1]}
+          contextHint="La finalidad debe ser concreta y la base de licitud debe venir de una opcion controlada. Agregue el respaldo normativo o institucional correspondiente."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Finalidad especifica"
                   description="Resume el proposito real de la actividad y el valor operativo que presta."
@@ -961,11 +969,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 2 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={2}
+          isOpen={openSections.has(2)}
+          onToggle={() => toggleSection(2)}
+          title="Titulares y datos personales"
+          desc="Seleccione titulares y documente las categorias y campos tratados por cada uno."
+          progress={stepProgress[2]}
+          contextHint="Seleccione los titulares que intervienen en la actividad. Para cada titular, todas las categorias de datos estan disponibles y la seleccion de campos se almacena de forma independiente."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Titulares y datos personales"
                   description="Seleccione los titulares y documente sus datos personales en una sola vista. Las categorias sugeridas se abren para reducir clics."
@@ -1000,8 +1018,7 @@ export function RatCreatePage() {
                       ) : (
                         <div className="personal-data-detail-stack">
                           {form.titulares.map((titular) => {
-                            const domainIds = getDomainIdsForTitular(titular, pdRelationships);
-                            const domains = getOrderedPersonalDataDomains(domainIds, dataCategoryOptions, pdDomains);
+                            const domains = pdDomains;
 
                             return (
                               <article key={titular} className="personal-data-titular-panel">
@@ -1016,7 +1033,7 @@ export function RatCreatePage() {
                                 </header>
 
                                 <div className="personal-data-domain-grid">
-                                  {domains.map((domain, domainIndex) => {
+                                  {domains.map((domain) => {
                                     const selection =
                                       form.datosPersonalesDetalle[titular]?.[domain.id] ?? {
                                         fields: [],
@@ -1025,7 +1042,6 @@ export function RatCreatePage() {
                                     const isSelected =
                                       selection.fields.length > 0 ||
                                       selection.justification.trim().length > 0;
-                                    const isRecommendedOpen = domainIndex < 2;
 
                                     return (
                                       <details
@@ -1035,7 +1051,7 @@ export function RatCreatePage() {
                                             ? "personal-data-domain-card personal-data-domain-card-selected"
                                             : "personal-data-domain-card"
                                         }
-                                        open={isSelected || isRecommendedOpen}
+                                        open={isSelected}
                                       >
                                         <summary>
                                           <span>
@@ -1106,11 +1122,21 @@ export function RatCreatePage() {
                     </div>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 3 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={3}
+          isOpen={openSections.has(3)}
+          onToggle={() => toggleSection(3)}
+          title="Operacion del tratamiento"
+          desc="Describa procedencia, operaciones, volumen, frecuencia, permanencia y alcance geografico."
+          progress={stepProgress[3]}
+          contextHint="Defina de donde provienen los datos, que volumen y frecuencia tiene el tratamiento, y que operaciones se realizan sobre los datos personales."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Origen y escala del tratamiento"
                   description="Primero define de donde vienen los datos y que volumen operativo maneja la actividad."
@@ -1238,11 +1264,21 @@ export function RatCreatePage() {
                     }
                   />
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 4 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={4}
+          isOpen={openSections.has(4)}
+          onToggle={() => toggleSection(4)}
+          title="Terceros y transferencias"
+          desc="Identifique encargados, destinatarios y transferencias nacionales o internacionales."
+          progress={stepProgress[4]}
+          contextHint="Solo complete esta seccion si existe acceso, encargo, comunicacion o transferencia de datos hacia terceros. Si no aplica, puede dejarse en blanco."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Relacion con terceros"
                   description="Indica si existe acceso, encargo o transferencia. Solo si la respuesta es afirmativa se habilita el detalle."
@@ -1365,11 +1401,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 5 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={5}
+          isOpen={openSections.has(5)}
+          onToggle={() => toggleSection(5)}
+          title="Conservacion"
+          desc="Defina plazos y criterios de conservacion y eliminacion de los datos."
+          progress={stepProgress[5]}
+          contextHint="Registre el plazo de retencion y las fechas clave que ayudaran a gobernar el ciclo de vida de la actividad de tratamiento."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Conservacion y fechas de control"
                   description="Define el criterio de retencion y las fechas que ayudaran a gobernar el ciclo de vida de la actividad."
@@ -1421,11 +1467,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 6 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={6}
+          isOpen={openSections.has(6)}
+          onToggle={() => toggleSection(6)}
+          title="Medidas de seguridad"
+          desc="Documente las medidas tecnicas y organizativas aplicables al tratamiento."
+          progress={stepProgress[6]}
+          contextHint="Registre los controles generales implementados y si la actividad realiza perfilamiento de titulares. Este campo es clave para la evaluacion de riesgo."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Controles generales"
                   description="Resume de forma ejecutiva los controles tecnicos, administrativos y fisicos ya implementados."
@@ -1489,11 +1545,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 7 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={7}
+          isOpen={openSections.has(7)}
+          onToggle={() => toggleSection(7)}
+          title="Activos asociados"
+          desc="Relacione sistemas, repositorios y activos de informacion que soportan el tratamiento."
+          progress={stepProgress[7]}
+          contextHint="Relaciona los activos de informacion vinculados a la dependencia responsable y al soporte fisico o logico de la actividad."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Activos asociados"
                   description="Relaciona los activos de informacion vinculados a la dependencia responsable y al soporte fisico o logico de la actividad."
@@ -1578,11 +1644,21 @@ export function RatCreatePage() {
                     </label>
                   </div>
                 </SectionCard>
-              </div>
-            ) : null}
+          </div>
+        </AccordionStep>
 
-            {activeStep === 8 ? (
-              <div className="wizard-section-stack">
+        <AccordionStep
+          index={8}
+          isOpen={openSections.has(8)}
+          onToggle={() => toggleSection(8)}
+          title="Riesgo y EIPD"
+          desc="Determine la necesidad de evaluacion y gestione los riesgos asociados."
+          progress={stepProgress[8]}
+          contextHint="Esta seccion muestra una lectura automatica preliminar del nivel de riesgo. Use esta informacion para anticipar si debe activar una EIPD o registrar observaciones."
+          saveLabel={getSaveDraftLabel(draftMode, nextLifecycleStatus)}
+          onSave={handleSaveDraft}
+        >
+          <div className="wizard-section-stack">
                 <SectionCard
                   title="Lectura automatica preliminar"
                   description="El sistema resume aqui los detonantes mas visibles para que el usuario entre a MTGE o EIPD con contexto."
@@ -1653,48 +1729,8 @@ export function RatCreatePage() {
                     />
                   </label>
                 </SectionCard>
-              </div>
-            ) : null}
-          </section>
-
-          <div className="wizard-action-bar">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => {
-                clearTreatmentDraft();
-                navigate("/actividades");
-              }}
-            >
-              Cancelar
-            </button>
-
-            <div className="wizard-footer-actions">
-              <button
-                type="button"
-                className="button-secondary"
-                disabled={activeStep === 0}
-                onClick={() => setActiveStep((current) => Math.max(current - 1, 0))}
-              >
-                Anterior
-              </button>
-
-              <button
-                type="button"
-                className="button-primary"
-                onClick={() =>
-                  setActiveStep((current) => Math.min(current + 1, RAT_FORM_STEPS.length - 1))
-                }
-              >
-                Siguiente
-              </button>
-            </div>
-
-            <button type="button" className="button-primary" onClick={handleSaveDraft}>
-              {getSaveDraftLabel(draftMode, nextLifecycleStatus)}
-            </button>
           </div>
-        </div>
+        </AccordionStep>
       </div>
     </section>
   );
@@ -1756,6 +1792,82 @@ function toggleValue(items: string[], value: string) {
   return items.includes(value)
     ? items.filter((item) => item !== value)
     : [...items, value];
+}
+
+function AccordionStep({
+  index,
+  isOpen,
+  onToggle,
+  title,
+  desc,
+  progress,
+  contextHint,
+  saveLabel,
+  onSave,
+  children,
+}: {
+  index: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  title: string;
+  desc: string;
+  progress: StepProgress;
+  contextHint: string;
+  saveLabel: string;
+  onSave: () => void;
+  children: ReactNode;
+}) {
+  const isDone = progress.total > 0 && progress.completed === progress.total;
+  const isPartial = !isDone && progress.completed > 0;
+  const stateClass = isDone ? " done" : isPartial ? " partial" : "";
+  const stateLabel = isDone ? "Completado" : isPartial ? "En progreso" : "Pendiente";
+
+  return (
+    <article className={`rat-acc${isOpen ? " open" : ""}`}>
+      <div
+        className="rat-acc-head"
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+      >
+        <div className="rat-acc-number">{index + 1}</div>
+        <div className="rat-acc-meta">
+          <div className="rat-acc-title">{title}</div>
+          <div className="rat-acc-desc">{desc}</div>
+        </div>
+        <div className={`rat-acc-state${stateClass}`}>{stateLabel}</div>
+        {progress.total > 0 ? (
+          <div className="rat-acc-count">
+            {progress.completed}/{progress.total} requeridos
+          </div>
+        ) : null}
+        <div className="rat-acc-chevron">▾</div>
+      </div>
+      <div className="rat-acc-body">
+        <div className="rat-context">
+          <span className="rat-context-icon">i</span>
+          <span>{contextHint}</span>
+        </div>
+        {children}
+        <div className="rat-acc-actions">
+          <span className="rat-section-save-note">
+            Los cambios se guardan con el registro completo.
+          </span>
+          <div className="rat-acc-actions-right">
+            <button type="button" className="button-primary" onClick={onSave}>
+              {saveLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function syncPersonalDataDetail(

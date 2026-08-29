@@ -35,6 +35,10 @@ export function TopNav({ onMobileMenuToggle }: TopNavProps) {
         </button>
         <div className="top-nav-brand">
           <img src={iessLogoColor} alt="IESS" className="top-nav-logo" />
+          <div className="top-nav-iess-info">
+            <span className="top-nav-iess-inst">Instituto Ecuatoriano de Seguridad Social</span>
+            <span className="top-nav-iess-dept">DNSIPD · Sistema RAT</span>
+          </div>
         </div>
       </div>
 

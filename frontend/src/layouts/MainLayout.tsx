@@ -97,7 +97,7 @@ export function MainLayout() {
         onClick={() => setIsSidebarOpen(false)}
       />
 
-      <aside className="sidebar">
+      <aside className="sidebar sidebar-dark">
         <div className="sidebar-header">
           <button
             type="button"
