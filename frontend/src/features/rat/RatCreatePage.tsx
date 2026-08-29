@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useDatosPersonales } from "./useDatosPersonales";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ContextModal } from "../../components/ContextModal";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "../../services/api-client";
 import {
@@ -233,6 +234,7 @@ export function RatCreatePage() {
     [draftMode],
   );
   const [openSections, setOpenSections] = useState(new Set<number>());
+  const [openTitularModal, setOpenTitularModal] = useState<string | null>(null);
   const [form, setForm] = useState<RatDraftForm>(() =>
     draftPayload ? { ...INITIAL_FORM, ...coerceDraftValues(draftPayload.values) } : INITIAL_FORM,
   );
@@ -984,144 +986,107 @@ export function RatCreatePage() {
           onSave={handleSaveDraft}
         >
           <div className="wizard-section-stack">
-                <SectionCard
-                  title="Titulares y datos personales"
-                  description="Seleccione los titulares y documente sus datos personales en una sola vista. Las categorias sugeridas se abren para reducir clics."
-                >
-                  <div className="personal-data-workbench">
-                    <div className="personal-data-picker">
-                      <div className="personal-data-picker-header">
-                        <span className="brand-kicker">Titulares</span>
-                        <p>Marque los grupos de personas cuyos datos intervienen en la actividad.</p>
-                      </div>
-
-                      <ChoiceGroup
-                        options={titularesOptions}
-                        selected={form.titulares}
-                        onToggle={handleToggleTitular}
-                        compact
-                      />
-                    </div>
-
-                    <div className="personal-data-detail-area">
-                      <div className="personal-data-selection-summary" aria-live="polite">
-                        <span>{form.titulares.length} titulares</span>
-                        <span>{selectedPersonalDataCategories.length} categorias</span>
-                        <span>{selectedPersonalDataFields} campos</span>
-                      </div>
-
-                      {form.titulares.length === 0 ? (
-                        <div className="empty-state-card">
-                          Seleccione al menos un titular para habilitar el detalle de datos
-                          personales.
-                        </div>
-                      ) : (
-                        <div className="personal-data-detail-stack">
-                          {form.titulares.map((titular) => {
-                            const domains = pdDomains;
-
-                            return (
-                              <article key={titular} className="personal-data-titular-panel">
-                                <header className="personal-data-titular-header">
-                                  <div>
-                                    <span className="brand-kicker">Titular</span>
-                                    <h4>{titular}</h4>
-                                  </div>
-                                  <span className="status-pill status-pill-borrador">
-                                    {getTitularSelectedFieldCount(form, titular)} campos
-                                  </span>
-                                </header>
-
-                                <div className="personal-data-domain-grid">
-                                  {domains.map((domain) => {
-                                    const selection =
-                                      form.datosPersonalesDetalle[titular]?.[domain.id] ?? {
-                                        fields: [],
-                                        justification: "",
-                                      };
-                                    const isSelected =
-                                      selection.fields.length > 0 ||
-                                      selection.justification.trim().length > 0;
-
-                                    return (
-                                      <details
-                                        key={`${titular}-${domain.id}`}
-                                        className={
-                                          isSelected
-                                            ? "personal-data-domain-card personal-data-domain-card-selected"
-                                            : "personal-data-domain-card"
-                                        }
-                                        open={isSelected}
-                                      >
-                                        <summary>
-                                          <span>
-                                            <strong>{domain.name}</strong>
-                                            <small>{domain.description}</small>
-                                          </span>
-                                          {domain.sensitive ? (
-                                            <em className="status-pill status-pill-alto">Sensible</em>
-                                          ) : null}
-                                        </summary>
-
-                                        <div className="personal-data-field-grid">
-                                          {domain.fields.map((field) => (
-                                            <label key={field} className="personal-data-field-chip">
-                                              <input
-                                                type="checkbox"
-                                                checked={selection.fields.includes(field)}
-                                                onChange={() =>
-                                                  handleTogglePersonalDataField(titular, domain.id, field)
-                                                }
-                                              />
-                                              <span>{field}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-
-                                        <label className="field full-width personal-data-justification">
-                                          <span>Justificacion</span>
-                                          <textarea
-                                            className="input textarea"
-                                            rows={3}
-                                            placeholder="Explique por que esta categoria es necesaria para la finalidad declarada."
-                                            value={selection.justification}
-                                            onChange={(event) =>
-                                              handlePersonalDataJustification(
-                                                titular,
-                                                domain.id,
-                                                event.target.value,
-                                              )
-                                            }
-                                          />
-                                        </label>
-                                      </details>
-                                    );
-                                  })}
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <label className="field full-width personal-data-notes">
-                        <span>Observaciones generales</span>
-                        <textarea
-                          className="input textarea"
-                          rows={4}
-                          placeholder="Agregue excepciones, criterios de minimizacion o notas para Riesgos y EIPD."
-                          value={form.descripcionDatos}
-                          onChange={(event) =>
-                            setForm((current) => ({
-                              ...current,
-                              descripcionDatos: event.target.value,
-                            }))
-                          }
+            <SectionCard
+              title="Titulares"
+              description="Seleccione los grupos de personas cuyos datos intervienen en la actividad. Use Configurar para asignar categorias y campos a cada titular de forma independiente."
+            >
+              <div className="titular-grid">
+                {titularesOptions.map((titular) => {
+                  const isSelected = form.titulares.includes(titular);
+                  const fieldCount = getTitularSelectedFieldCount(form, titular);
+                  const cats = getPerTitularCategoryNames(form, titular, pdDomains);
+                  return (
+                    <div
+                      key={titular}
+                      className={`titular-card${isSelected ? " titular-card-selected" : ""}`}
+                    >
+                      <label className="titular-card-check">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleTitular(titular)}
                         />
+                        <span className="titular-card-name">{titular}</span>
                       </label>
+                      {isSelected ? (
+                        <div className="titular-card-actions">
+                          <div className="titular-card-status">
+                            {fieldCount > 0 ? (
+                              <>
+                                <span className="titular-field-count">{fieldCount} campos</span>
+                                {cats.length > 0 ? (
+                                  <span className="titular-cats-preview">
+                                    {cats.slice(0, 2).join(", ")}
+                                    {cats.length > 2 ? ` +${cats.length - 2}` : ""}
+                                  </span>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="titular-no-fields">Sin datos configurados</span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="button-ghost"
+                            style={{ fontSize: "12px", padding: "4px 10px" }}
+                            onClick={() => setOpenTitularModal(titular)}
+                          >
+                            {fieldCount > 0 ? "Editar" : "Configurar"} →
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                </SectionCard>
+                  );
+                })}
+              </div>
+
+              {form.titulares.length > 0 ? (
+                <div className="titular-summary-block" style={{ marginTop: 14 }}>
+                  <div className="titular-summary-label">Datos seleccionados por titular</div>
+                  {form.titulares.map((titular) => {
+                    const cats = getPerTitularCategoryNames(form, titular, pdDomains);
+                    return cats.length > 0 ? (
+                      <div key={titular} className="titular-summary-row">
+                        <strong className="titular-summary-name">{titular}</strong>
+                        <div className="chips">
+                          {cats.map((cat) => (
+                            <span key={cat} className="chip">{cat}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })}
+                  {form.titulares.every(
+                    (t) => getPerTitularCategoryNames(form, t, pdDomains).length === 0,
+                  ) ? (
+                    <p style={{ fontSize: 12, color: "#6c757d", margin: 0 }}>
+                      Haga clic en Configurar para seleccionar las categorias de datos por titular.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </SectionCard>
+
+            <SectionCard
+              title="Observaciones generales"
+              description="Excepciones, criterios de minimizacion o notas para el analisis de Riesgos y EIPD."
+            >
+              <label className="field full-width">
+                <span>Observaciones sobre datos personales</span>
+                <textarea
+                  className="input textarea"
+                  rows={4}
+                  placeholder="Agregue excepciones, criterios de minimizacion o notas para Riesgos y EIPD."
+                  value={form.descripcionDatos}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      descripcionDatos: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </SectionCard>
           </div>
         </AccordionStep>
 
@@ -1732,6 +1697,94 @@ export function RatCreatePage() {
           </div>
         </AccordionStep>
       </div>
+
+      {openTitularModal !== null ? (
+        <ContextModal
+          isOpen={true}
+          title={openTitularModal}
+          subtitle="Seleccione las categorias y campos de datos personales tratados para este titular"
+          onClose={() => setOpenTitularModal(null)}
+          onSave={() => setOpenTitularModal(null)}
+          saveLabel="Guardar seleccion"
+        >
+          <div
+            className="titular-modal-stats"
+            aria-live="polite"
+          >
+            {getTitularSelectedFieldCount(form, openTitularModal)}{" "}
+            {getTitularSelectedFieldCount(form, openTitularModal) === 1
+              ? "campo seleccionado"
+              : "campos seleccionados"}
+          </div>
+          {pdDomains.map((domain) => {
+            const selection =
+              form.datosPersonalesDetalle[openTitularModal]?.[domain.id] ?? {
+                fields: [],
+                justification: "",
+              };
+            const hasSelection =
+              selection.fields.length > 0 || selection.justification.trim().length > 0;
+            return (
+              <details
+                key={domain.id}
+                className={`modal-domain-card${hasSelection ? " modal-domain-card-selected" : ""}`}
+                open={hasSelection}
+              >
+                <summary>
+                  <div className="modal-domain-info">
+                    <strong className="modal-domain-name">{domain.name}</strong>
+                    <span className="modal-domain-desc">{domain.description}</span>
+                  </div>
+                  {domain.sensitive ? (
+                    <em className="modal-domain-badge modal-domain-badge-sens">Sensible</em>
+                  ) : null}
+                  {selection.fields.length > 0 ? (
+                    <span className="modal-domain-badge modal-domain-badge-count">
+                      {selection.fields.length}
+                    </span>
+                  ) : null}
+                  <span className="modal-domain-chevron">▾</span>
+                </summary>
+                <div className="modal-domain-body">
+                  <div className="personal-data-field-grid">
+                    {domain.fields.map((field) => (
+                      <label key={field} className="personal-data-field-chip">
+                        <input
+                          type="checkbox"
+                          checked={selection.fields.includes(field)}
+                          onChange={() =>
+                            handleTogglePersonalDataField(openTitularModal, domain.id, field)
+                          }
+                        />
+                        <span>{field}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <label
+                    className="field full-width personal-data-justification"
+                    style={{ marginTop: 10 }}
+                  >
+                    <span>Justificacion</span>
+                    <textarea
+                      className="input textarea"
+                      rows={3}
+                      placeholder="Explique por que esta categoria es necesaria para la finalidad declarada."
+                      value={selection.justification}
+                      onChange={(event) =>
+                        handlePersonalDataJustification(
+                          openTitularModal,
+                          domain.id,
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              </details>
+            );
+          })}
+        </ContextModal>
+      ) : null}
     </section>
   );
 }
@@ -2226,6 +2279,20 @@ function getSaveDraftLabel(
   }
 
   return isEdit ? "Actualizar borrador" : "Guardar borrador";
+}
+
+function getPerTitularCategoryNames(
+  form: RatDraftForm,
+  titular: string,
+  domains: PersonalDataDomain[],
+): string[] {
+  const detail = form.datosPersonalesDetalle[titular] ?? {};
+  return domains
+    .filter((domain) => {
+      const sel = detail[domain.id];
+      return sel !== undefined && sel.fields.length > 0;
+    })
+    .map((domain) => domain.name);
 }
 
 function normalizeStatusToken(value: RecordStatus) {
