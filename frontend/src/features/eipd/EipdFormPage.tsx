@@ -9,6 +9,7 @@ import {
   type PanelId, type Scenario,
 } from "./eipd-form-data";
 import { useEipdFormCreate, useEipdFormOne, useEipdFormSave, type EipdFormPatch } from "./eipd-form.api";
+import { buildInstitutionalReport, printInstitutionalReport, rptTable, rptNote } from "../../utils/buildInstitutionalReport";
 import "./eipd-form.css";
 
 type EipdPendingAction = {
@@ -234,6 +235,136 @@ export function EipdFormPage() {
   const isLocked = ["APROBADO", "CERRADO"].includes(currentEstado) ||
     (currentEstado === "EN_REVISION" && !cap.approve);
 
+  function handleGenerarInforme() {
+    const fv = (key: string) => form[key] ?? "";
+
+    /* Sección 1: contexto del tratamiento */
+    const ctx = rptTable(
+      ["Campo", "Valor"],
+      [
+        ["Actividad de tratamiento", fv("portada-actividad")],
+        ["Responsable del tratamiento", fv("portada-responsable")],
+        ["Dependencia / Unidad", fv("portada-dependencia")],
+        ["Versión del documento", fv("portada-version") || "1.0"],
+        ["Fecha de inicio", fv("portada-fecha-inicio")],
+        ["Descripción del tratamiento", fv("s1-descripcion")],
+        ["Finalidad específica", fv("s1-finalidad")],
+        ["Base de licitud", fv("s1-licitud")],
+        ["Plazo de conservación", fv("s1-plazo")],
+        ["¿Tratamiento a gran escala?", fv("s1-gran-escala")],
+      ].filter(([, v]) => v),
+      ["35%", "65%"],
+    );
+
+    /* Sección 2: categorías de datos y activos */
+    const datosHtml = datosRows.filter((r) => r.tipo || r.descripcion).length > 0
+      ? rptTable(
+          ["Categoría", "Tipo de dato", "Descripción", "Base licitud", "Plazo", "Destinatarios"],
+          datosRows.filter((r) => r.tipo || r.descripcion).map((r) => [r.categoria, r.tipo, r.descripcion, r.licitud, r.plazo, r.destinatarios]),
+          ["15%", "14%", "24%", "14%", "11%", "22%"],
+        )
+      : rptNote("No se han registrado categorías de datos personales.");
+    const activosHtml = activosRows.filter((r) => r.nombre).length > 0
+      ? rptTable(
+          ["Activo", "Tipo", "Propietario", "Ubicación", "Controles", "Observaciones"],
+          activosRows.filter((r) => r.nombre).map((r) => [r.nombre, r.tipo, r.propietario, r.ubicacion, r.controles, r.observaciones]),
+          ["18%", "14%", "14%", "14%", "20%", "20%"],
+        )
+      : rptNote("No se han registrado activos de información.");
+
+    /* Sección 3: riesgos jurídicos */
+    const riesgoJuridico = S2_SCENARIOS
+      .map((s, i) => {
+        const st = s2State[i];
+        if (!st) return null;
+        const sid = `s${s.id.replace(/\./g, "")}`;
+        const prob = st.fields[`${sid}-prob`] ?? "";
+        const imp = st.fields[`${sid}-imp`] ?? "";
+        const niv = st.fields[`${sid}-nivel`] ?? "";
+        if (!prob && !imp && !niv) return null;
+        return [s.id, s.norm, s.title, prob || "—", imp || "—", niv || "—"];
+      })
+      .filter(Boolean) as string[][];
+    const juridHtml = riesgoJuridico.length > 0
+      ? rptTable(
+          ["ID", "Norma", "Escenario de riesgo", "Probabilidad", "Impacto", "Nivel"],
+          riesgoJuridico,
+          ["6%", "14%", "44%", "12%", "12%", "12%"],
+        )
+      : rptNote("No se han evaluado escenarios de riesgos jurídicos.");
+
+    /* Sección 4: riesgos de seguridad */
+    const riesgoSeg = S3_SCENARIOS
+      .map((s, i) => {
+        const st = s3State[i];
+        if (!st) return null;
+        const sid = `s${s.id.replace(/\./g, "")}`;
+        const prob = st.fields[`${sid}-prob`] ?? "";
+        const imp = st.fields[`${sid}-imp`] ?? "";
+        const niv = st.fields[`${sid}-nivel`] ?? "";
+        if (!prob && !imp && !niv) return null;
+        return [s.id, s.cat ?? "—", s.title, prob || "—", imp || "—", niv || "—"];
+      })
+      .filter(Boolean) as string[][];
+    const segHtml = riesgoSeg.length > 0
+      ? rptTable(
+          ["ID", "Categoría", "Escenario de riesgo", "Probabilidad", "Impacto", "Nivel"],
+          riesgoSeg,
+          ["6%", "15%", "43%", "12%", "12%", "12%"],
+        )
+      : rptNote("No se han evaluado escenarios de riesgos de seguridad.");
+
+    /* Sección 5: plan de tratamiento */
+    const planFiltered = s5Rows.filter((r) => r["medida"] || r["ref"]);
+    const planHtml = planFiltered.length > 0
+      ? rptTable(
+          ["Ref. riesgo", "Medida de tratamiento", "Tipo", "Responsable", "Plazo", "Estado", "Imp. residual"],
+          planFiltered.map((r) => [r["ref"] ?? "—", r["medida"] ?? "—", r["tipo"] ?? "—", r["responsable"] ?? "—", r["plazo"] ?? "—", r["estado"] ?? "—", r["impRes"] ?? "—"]),
+          ["10%", "28%", "12%", "14%", "10%", "13%", "13%"],
+        )
+      : rptNote("No se han registrado medidas de tratamiento en el plan.");
+
+    const html = buildInstitutionalReport({
+      logoSrc: iessLogoColor,
+      title: "Evaluación de Impacto del Tratamiento de Datos Personales",
+      subtitle: "Conforme al Art. 29 del Reglamento a la Ley Orgánica de Protección de Datos Personales",
+      objective: fv("portada-actividad") || fv("s1-descripcion") || "Evaluación de impacto del tratamiento de datos personales",
+      code: trackingCode || doc?.codigo || "EIPDP-S/N",
+      metadata: [
+        ["Código de seguimiento", trackingCode || doc?.codigo || "—"],
+        ["Actividad de tratamiento", fv("portada-actividad")],
+        ["Responsable del tratamiento", fv("portada-responsable")],
+        ["Dependencia / Unidad", fv("portada-dependencia")],
+        ["Versión", fv("portada-version") || "1.0"],
+        ["Estado", currentEstado],
+        ["Escenarios jurídicos evaluados", String(riesgoJuridico.length)],
+        ["Escenarios de seguridad evaluados", String(riesgoSeg.length)],
+      ],
+      toc: [
+        "Contexto del tratamiento",
+        "Categorías de datos personales y activos",
+        "Evaluación de riesgos jurídicos",
+        "Evaluación de riesgos de seguridad",
+        "Plan de tratamiento del riesgo",
+        "Suscripción",
+      ],
+      sections: [
+        { heading: "1. Contexto del tratamiento", html: ctx },
+        { heading: "2. Categorías de datos personales y activos de información", html: datosHtml + activosHtml },
+        { heading: "3. Evaluación de riesgos jurídicos (LOPDP)", html: juridHtml },
+        { heading: "4. Evaluación de riesgos de seguridad", html: segHtml },
+        { heading: "5. Plan de tratamiento del riesgo", html: planHtml },
+      ],
+      signatures: [
+        { role: "Elaborado por", name: fv("portada-responsable") || "—", cargo: fv("portada-dependencia") || "—" },
+        { role: "Delegado de Protección de Datos", name: fv("s7-dpd") || "—", cargo: "DNSIPD — IESS" },
+        { role: "Autorizado por", name: "Director/a DNSIPD", cargo: "Dirección Nacional de Seguridad de la Información y Protección de Datos" },
+      ],
+    });
+
+    printInstitutionalReport(html, `EIPDP — ${trackingCode || doc?.codigo || "formulario"}`);
+  }
+
   return (
     <section className="wizard-experience">
       <div className="print-header">
@@ -315,6 +446,15 @@ export function EipdFormPage() {
               onClick={() => void saveMutation.mutateAsync({ id: docIdRef.current!, payload: { estado: "CERRADO" } })}
             >
               Cerrar
+            </button>
+          )}
+          {!isNew && (
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={handleGenerarInforme}
+            >
+              Generar informe
             </button>
           )}
           {cap.create && !isNew && (

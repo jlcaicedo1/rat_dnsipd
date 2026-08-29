@@ -767,6 +767,23 @@ const reportPrintStyles = `
     border-top: 1px solid #cdd9e8; padding-top: 7px; margin-top: 10px;
     font-size: 7pt; color: #6b8099;
   }
+
+  /* ── INSTITUTIONAL COVER PAGE (portada) ── */
+  .rpt-cover {
+    text-align: center; padding: 28mm 0 20mm;
+    border-bottom: 3px solid #e8a000;
+    page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .rpt-cover img { height: 72px; margin-bottom: 18px; display: block; margin-left: auto; margin-right: auto; }
+  .rc-org { font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px; color: #41546a }
+  .rc-dep { font-size: 9.5pt; color: #6c757d; margin-top: 4px }
+  .rc-tt { font-size: 20pt; font-weight: 800; color: #1a3a5c; margin: 22px 0 8px; line-height: 1.22 }
+  .rc-sub { font-size: 10.5pt; color: #41546a; margin-bottom: 18px }
+  .rc-obj { font-size: 10.5pt; font-weight: 600; color: #1f2b38; background: #f2f5fa; border: 1px solid #c8d0dc; border-radius: 6px; padding: 12px 16px; margin: 0 auto 18px; max-width: 80%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rc-cod { display: inline-block; background: #1a3a5c; color: #fff; font-size: 10pt; font-weight: 700; letter-spacing: 1px; padding: 5px 16px; border-radius: 5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rpt-meta-table { width: 100%; border-collapse: collapse; font-size: 9.4pt; margin-top: 20px }
+  .rpt-meta-table td { border: 1px solid #cdd5e0; padding: 6px 9px }
+  .rpt-meta-table td.k { background: #f2f5fa; font-weight: 600; width: 35%; color: #33506e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 `;
 
 // ─── public print API ─────────────────────────────────────────────────────────
@@ -809,6 +826,27 @@ export function buildReportDocument(
   <style>${reportPrintStyles}</style>
 </head>
 <body>
+
+<!-- PORTADA INSTITUCIONAL -->
+<div class="rpt-cover">
+  <img src="${logoSrc}" alt="IESS" />
+  <div class="rc-org">Instituto Ecuatoriano de Seguridad Social</div>
+  <div class="rc-dep">Dirección Nacional de Seguridad de la Información y Protección de Datos — DNSIPD</div>
+  <div class="rc-tt">Registro de Actividad de Tratamiento de Datos Personales</div>
+  <div class="rc-sub">Ley Orgánica de Protección de Datos Personales y su Reglamento General</div>
+  <div class="rc-obj">${escapeHtml(activityName ?? "")}</div>
+  <div class="rc-cod">${escapeHtml(activityCode)}</div>
+  <table class="rpt-meta-table" style="margin-top:22px;text-align:left"><tbody>
+    <tr><td class="k">Dependencia responsable</td><td>${escapeHtml(fmtVal(responsibleDependency))}</td></tr>
+    <tr><td class="k">Dependencia ejecutora</td><td>${escapeHtml(fmtVal(executingDependency))}</td></tr>
+    <tr><td class="k">Estado del documento</td><td>${escapeHtml(fmtVal(status))}</td></tr>
+    <tr><td class="k">Versión</td><td>${escapeHtml(version)}</td></tr>
+    <tr><td class="k">Fecha de levantamiento</td><td>${escapeHtml(fmtVal(report.fechaCreacion))}</td></tr>
+    <tr><td class="k">Nivel de riesgo</td><td>${escapeHtml(fmtVal(riskLevel))}</td></tr>
+    <tr><td class="k">Fecha de generación</td><td>${today}</td></tr>
+  </tbody></table>
+</div>
+
 <div class="report-sheet">
 
   <!-- MEMBRETE INSTITUCIONAL -->
