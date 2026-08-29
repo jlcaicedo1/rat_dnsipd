@@ -285,7 +285,10 @@ export function AssetsPage() {
       return response.data.data;
     },
     onSuccess: async (_savedAsset, draft) => {
-      await queryClient.invalidateQueries({ queryKey: ["activos"] });
+      if (draft.id) {
+        queryClient.removeQueries({ queryKey: ["activos", "detail", draft.id] });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["activos", "list"] });
       setAssetFeedback({
         type: "success",
         message: draft.id ? "Registro editado con exito." : "Registro guardado con exito.",
@@ -559,18 +562,28 @@ export function AssetsPage() {
   const activeAssetPreview = draftAsset ? calculateAssetPreview(draftAsset) : null;
 
   function handleGenerarInventario() {
-    const depLabel = dependenciaFilter !== "Todas" ? dependenciaFilter : "Institucional (todas las dependencias)";
+    if (dependenciaFilter === "Todas") {
+      setAssetFeedback({
+        type: "error",
+        message: "Seleccione una dependencia específica en el filtro antes de generar el inventario.",
+      });
+      return;
+    }
+
+    const depLabel = dependenciaFilter;
     const today = new Date().toLocaleDateString("es-EC", { year: "numeric", month: "long", day: "2-digit" });
 
     const inventoryRows = filteredAssets.map((a) => [
       a.codigo,
       a.nombre,
       a.tipoActivo ?? "—",
-      a.dependencia ?? "—",
       a.clasificacionInformacion ?? "—",
+      a.confidencialidad !== null ? String(a.confidencialidad) : "—",
+      a.integridad !== null ? String(a.integridad) : "—",
+      a.disponibilidad !== null ? String(a.disponibilidad) : "—",
+      a.valorActivo !== null ? a.valorActivo.toFixed(2) : "—",
       a.impacto ?? "—",
-      a.valorActivo !== null ? String(a.valorActivo) : "—",
-      a.activo ? "Activo" : "Baja lógica",
+      a.activo ? "Activo" : "Baja",
     ]);
 
     const criticalCount = filteredAssets.filter((a) => a.impacto === "CATASTROFICO" || a.impacto === "MAYOR").length;
@@ -579,14 +592,15 @@ export function AssetsPage() {
     let summaryHtml = rptTable(
       ["Indicador", "Valor"],
       [
+        ["Dependencia", depLabel],
         ["Total de activos en el inventario", String(filteredAssets.length)],
-        ["Activos vigentes (activos)", String(activeCount)],
+        ["Activos vigentes", String(activeCount)],
         ["Activos en baja lógica", String(filteredAssets.length - activeCount)],
-        ["Activos de impacto alto / catastrófico", String(criticalCount)],
-        ["Filtro de dependencia aplicado", depLabel],
+        ["Activos de impacto Mayor / Catastrófico", String(criticalCount)],
+        ["Filtros adicionales", [tipoFilter !== "Todos" ? `Tipo: ${tipoFilter}` : "", impactoFilter !== "Todos" ? `Impacto: ${impactoFilter}` : "", estadoFilter !== "Todos" ? `Estado: ${estadoFilter}` : ""].filter(Boolean).join("; ") || "Ninguno"],
         ["Fecha del inventario", today],
       ],
-      ["55%", "45%"],
+      ["60%", "40%"],
     );
 
     if (filteredAssets.length === 0) {
@@ -595,23 +609,24 @@ export function AssetsPage() {
 
     const inventoryHtml = filteredAssets.length > 0
       ? rptTable(
-          ["Código", "Nombre del activo", "Tipo", "Dependencia", "Clasificación", "Impacto", "Valor", "Estado"],
+          ["Código", "Nombre del activo", "Tipo", "Clasificación", "C", "I", "D", "Valor", "Impacto", "Estado"],
           inventoryRows,
-          ["9%", "20%", "11%", "15%", "12%", "10%", "8%", "8%"],
+          ["9%", "24%", "13%", "13%", "4%", "4%", "4%", "7%", "12%", "10%"],
         )
-      : rptNote("Sin activos para el filtro seleccionado.");
+      : rptNote("Sin activos registrados para la dependencia seleccionada.");
 
     const html = buildInstitutionalReport({
       logoSrc: iessLogoColor,
       title: "Inventario de Activos de Información",
       subtitle: `Dependencia: ${depLabel}`,
-      objective: `Inventario institucional de activos de información con valoración de confidencialidad, integridad y disponibilidad conforme a la Ley Orgánica de Protección de Datos Personales — alcance: ${depLabel}`,
+      objective: `Inventario de activos de información con valoración de confidencialidad (C), integridad (I) y disponibilidad (D) conforme a la Ley Orgánica de Protección de Datos Personales — Dependencia: ${depLabel}`,
       code: `INV-ACT-${new Date().getFullYear()}`,
       metadata: [
-        ["Dependencia / alcance", depLabel],
+        ["Dependencia", depLabel],
         ["Total de activos", String(filteredAssets.length)],
         ["Activos vigentes", String(activeCount)],
-        ["Filtros adicionales aplicados", [tipoFilter !== "Todos" ? `Tipo: ${tipoFilter}` : "", impactoFilter !== "Todos" ? `Impacto: ${impactoFilter}` : "", estadoFilter !== "Todos" ? `Estado: ${estadoFilter}` : ""].filter(Boolean).join("; ") || "Ninguno"],
+        ["Activos en baja lógica", String(filteredAssets.length - activeCount)],
+        ["Impacto alto / catastrófico", String(criticalCount)],
         ["Generado por", user?.nombre ?? "—"],
         ["Rol", roleCapabilities.label],
       ],
@@ -668,6 +683,7 @@ export function AssetsPage() {
           <button
             type="button"
             className="button-secondary"
+            title={dependenciaFilter === "Todas" ? "Seleccione una dependencia en el filtro para generar el inventario" : `Generar inventario de ${dependenciaFilter}`}
             onClick={handleGenerarInventario}
           >
             Generar inventario

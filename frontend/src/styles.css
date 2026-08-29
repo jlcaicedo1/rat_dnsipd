@@ -3110,7 +3110,7 @@ a {
 .report-preview-modal {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 300;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -4859,7 +4859,7 @@ h4 {
   position: fixed;
   top: 18px;
   right: 18px;
-  z-index: 140;
+  z-index: 330;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -4901,7 +4901,7 @@ h4 {
 }
 
 .confirm-modal {
-  z-index: 130;
+  z-index: 320;
 }
 
 .confirm-modal-dialog {
