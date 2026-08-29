@@ -18,6 +18,8 @@ import {
   formatCatalogTypeLabel,
   type CatalogEntry,
 } from "../catalogs/catalogs-data";
+import iessLogoColor from "../../assets/iess-logo-color.png";
+import { buildInstitutionalReport, printInstitutionalReport, rptTable, rptNote } from "../../utils/buildInstitutionalReport";
 
 type AssetSummary = {
   id: number;
@@ -556,6 +558,78 @@ export function AssetsPage() {
 
   const activeAssetPreview = draftAsset ? calculateAssetPreview(draftAsset) : null;
 
+  function handleGenerarInventario() {
+    const depLabel = dependenciaFilter !== "Todas" ? dependenciaFilter : "Institucional (todas las dependencias)";
+    const today = new Date().toLocaleDateString("es-EC", { year: "numeric", month: "long", day: "2-digit" });
+
+    const inventoryRows = filteredAssets.map((a) => [
+      a.codigo,
+      a.nombre,
+      a.tipoActivo ?? "—",
+      a.dependencia ?? "—",
+      a.clasificacionInformacion ?? "—",
+      a.impacto ?? "—",
+      a.valorActivo !== null ? String(a.valorActivo) : "—",
+      a.activo ? "Activo" : "Baja lógica",
+    ]);
+
+    const criticalCount = filteredAssets.filter((a) => a.impacto === "CATASTROFICO" || a.impacto === "MAYOR").length;
+    const activeCount = filteredAssets.filter((a) => a.activo).length;
+
+    let summaryHtml = rptTable(
+      ["Indicador", "Valor"],
+      [
+        ["Total de activos en el inventario", String(filteredAssets.length)],
+        ["Activos vigentes (activos)", String(activeCount)],
+        ["Activos en baja lógica", String(filteredAssets.length - activeCount)],
+        ["Activos de impacto alto / catastrófico", String(criticalCount)],
+        ["Filtro de dependencia aplicado", depLabel],
+        ["Fecha del inventario", today],
+      ],
+      ["55%", "45%"],
+    );
+
+    if (filteredAssets.length === 0) {
+      summaryHtml += rptNote("No hay activos que coincidan con los filtros aplicados al generar este informe.");
+    }
+
+    const inventoryHtml = filteredAssets.length > 0
+      ? rptTable(
+          ["Código", "Nombre del activo", "Tipo", "Dependencia", "Clasificación", "Impacto", "Valor", "Estado"],
+          inventoryRows,
+          ["9%", "20%", "11%", "15%", "12%", "10%", "8%", "8%"],
+        )
+      : rptNote("Sin activos para el filtro seleccionado.");
+
+    const html = buildInstitutionalReport({
+      logoSrc: iessLogoColor,
+      title: "Inventario de Activos de Información",
+      subtitle: `Dependencia: ${depLabel}`,
+      objective: `Inventario institucional de activos de información con valoración de confidencialidad, integridad y disponibilidad conforme a la Ley Orgánica de Protección de Datos Personales — alcance: ${depLabel}`,
+      code: `INV-ACT-${new Date().getFullYear()}`,
+      metadata: [
+        ["Dependencia / alcance", depLabel],
+        ["Total de activos", String(filteredAssets.length)],
+        ["Activos vigentes", String(activeCount)],
+        ["Filtros adicionales aplicados", [tipoFilter !== "Todos" ? `Tipo: ${tipoFilter}` : "", impactoFilter !== "Todos" ? `Impacto: ${impactoFilter}` : "", estadoFilter !== "Todos" ? `Estado: ${estadoFilter}` : ""].filter(Boolean).join("; ") || "Ninguno"],
+        ["Generado por", user?.nombre ?? "—"],
+        ["Rol", roleCapabilities.label],
+      ],
+      toc: ["Resumen del inventario", "Inventario detallado de activos"],
+      sections: [
+        { heading: "1. Resumen del inventario", html: summaryHtml },
+        { heading: "2. Inventario detallado de activos", html: inventoryHtml },
+      ],
+      signatures: [
+        { role: "Elaborado por", name: user?.nombre ?? "—", cargo: roleCapabilities.label },
+        { role: "Custodio de datos", name: "Delegado de Protección de Datos", cargo: "DNSIPD — IESS" },
+        { role: "Autorizado por", name: "Director/a DNSIPD", cargo: "Dirección Nacional de Seguridad de la Información y Protección de Datos" },
+      ],
+    });
+
+    printInstitutionalReport(html, `Inventario Activos — ${depLabel}`);
+  }
+
   return (
     <section className="catalogs-page assets-page">
       {assetFeedback ? (
@@ -591,6 +665,13 @@ export function AssetsPage() {
           <Link to="/catalogos" className="button-secondary">
             Catalogos del sistema
           </Link>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={handleGenerarInventario}
+          >
+            Generar inventario
+          </button>
           {roleCapabilities.assets.create ? (
             <button
               type="button"

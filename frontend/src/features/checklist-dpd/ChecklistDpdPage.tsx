@@ -6,6 +6,7 @@ import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
 import { EJES, type EjeKey } from "./checklist-dpd-data";
 import { useChecklistDpdCreate, useChecklistDpdOne, useChecklistDpdSave, type ChecklistDpdPatch } from "./checklist-dpd.api";
+import { buildInstitutionalReport, printInstitutionalReport, rptTable, rptNote, rptBadge } from "../../utils/buildInstitutionalReport";
 import "./checklist-dpd.css";
 
 type ChecklistPendingAction = {
@@ -261,6 +262,97 @@ export function ChecklistDpdPage() {
   function goNext() { if (currentTabIdx < TABS.length - 1) goToTab(TABS[currentTabIdx + 1]); }
   function goPrev() { if (currentTabIdx > 0) goToTab(TABS[currentTabIdx - 1]); }
 
+  function handleGenerarInforme() {
+    const NIV_LABEL: Record<string, string> = { "0": "Nivel 0 — Inexistente", "1": "Nivel 1 — Inicial", "2": "Nivel 2 — Definido", "3": "Nivel 3 — Optimizado", "na": "N/A" };
+    const riesgoToLevel = (label: string) => {
+      if (label === "CRITICO") return "critico" as const;
+      if (label === "ALTO") return "alto" as const;
+      if (label === "MEDIO") return "medio" as const;
+      return "bajo" as const;
+    };
+
+    /* Sección 1: Resumen GAP */
+    const resumenRows = EJES.map((eje, i) => {
+      const s = stats[i];
+      const rl = riesgoLabel(s.avg);
+      return [
+        eje.label,
+        s.avg !== null ? s.avg.toFixed(2) : "—",
+        s.brecha !== null ? s.brecha.toFixed(2) : "—",
+        rptBadge(rl, riesgoToLevel(rl)),
+        `${s.evaluated}/${s.total}`,
+      ];
+    });
+    const globalRl = riesgoLabel(globalAvg);
+    const resumenSection = rptTable(
+      ["Eje de evaluación", "Promedio", "Brecha", "Nivel de riesgo", "Controles evaluados"],
+      resumenRows,
+      ["36%", "13%", "13%", "20%", "18%"],
+    ) + `<p><strong>Madurez global promedio:</strong> ${globalAvg !== null ? globalAvg.toFixed(2) : "—"}/3 — ${rptBadge(globalRl, riesgoToLevel(globalRl))}</p>`;
+
+    /* Sección 2: Detalle por eje */
+    const detalleHtml = EJES.map((eje, i) => {
+      const rows = state[eje.key].map((cs) => {
+        const ctrl = eje.data.find((c) => c.id === cs.id);
+        const nl = cs.nivel !== null ? NIV_LABEL[String(cs.nivel)] ?? "—" : "Sin evaluar";
+        return [
+          cs.nivel !== null && cs.nivel !== "na" ? String(cs.nivel) : cs.nivel === "na" ? "N/A" : "—",
+          ctrl?.principio ?? "—",
+          ctrl?.pregunta ?? "—",
+          nl,
+          cs.evidencia || "—",
+        ];
+      });
+      return `<h3>${eje.label}</h3>` + rptTable(
+        ["Niv.", "Principio", "Control / pregunta", "Nivel de madurez", "Evidencia / observación"],
+        rows,
+        ["5%", "12%", "40%", "20%", "23%"],
+      );
+    }).join("");
+
+    /* Sección 3: Plan de acción */
+    const planFiltered = plan.filter((r) => r.hallazgo?.trim() || r.accion?.trim());
+    const planHtml = planFiltered.length === 0
+      ? rptNote("No se han registrado acciones de mejora en el plan de acción.")
+      : rptTable(
+          ["Eje", "Hallazgo / brecha", "Acción de mejora", "Responsable", "Prioridad", "Fecha límite", "Estado"],
+          planFiltered.map((r) => [r.eje ?? "—", r.hallazgo ?? "—", r.accion ?? "—", r.responsable ?? "—", r.prioridad ?? "—", r.fechaLim ?? "—", r.estado ?? "—"]),
+          ["10%", "22%", "22%", "13%", "10%", "10%", "13%"],
+        );
+
+    const html = buildInstitutionalReport({
+      logoSrc: iessLogoColor,
+      title: "Informe Gerencial — Diseño por Defecto y Privacidad",
+      subtitle: "Evaluación de madurez DevPrivOps · DevSecOps · DevRiskOps",
+      objective: form.proceso || "Evaluación de madurez en privacidad por diseño y por defecto conforme a la Ley Orgánica de Protección de Datos Personales",
+      code: form.codigo || doc?.codigo || "DPD-S/N",
+      metadata: [
+        ["Proceso / sistema evaluado", form.proceso],
+        ["Dependencia", form.dependencia],
+        ["Responsable", form.responsable],
+        ["Periodo de evaluación", form.periodo],
+        ["Versión del documento", form.version],
+        ["Estado", currentEstado],
+        ["Código del checklist", form.codigo || doc?.codigo || "—"],
+        ["Controles evaluados", `${totalEval} de ${totalItems} (${progressPct}%)`],
+        ["Madurez global", `${globalAvg !== null ? globalAvg.toFixed(2) : "—"} / 3.00`],
+      ],
+      toc: ["Resumen GAP por eje", "Detalle de controles por eje", "Plan de acción y mejora", "Suscripción"],
+      sections: [
+        { heading: "1. Resumen GAP por eje", html: resumenSection },
+        { heading: "2. Detalle de controles por eje", html: detalleHtml },
+        { heading: "3. Plan de acción y mejora", html: planHtml },
+      ],
+      signatures: [
+        { role: "Elaborado por", name: form.responsable || "—", cargo: "Responsable del proceso" },
+        { role: "Revisado por", name: "Delegado de Protección de Datos", cargo: "DNSIPD — IESS" },
+        { role: "Autorizado por", name: "Director/a DNSIPD", cargo: "Dirección Nacional de Seguridad de la Información y Protección de Datos" },
+      ],
+    });
+
+    printInstitutionalReport(html, `Informe DPD — ${form.codigo || doc?.codigo || "checklist"}`);
+  }
+
   return (
     <section className="wizard-experience">
       <div className="print-header">
@@ -342,6 +434,15 @@ export function ChecklistDpdPage() {
               onClick={() => setPendingAction({ estado: "CERRADO", titulo: "Cerrar Checklist DPD", actionLabel: "Confirmar cierre", variant: "warning" })}
             >
               Cerrar
+            </button>
+          )}
+          {!isNew && (
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={handleGenerarInforme}
+            >
+              Generar informe
             </button>
           )}
           {cap.create && !isNew && (
