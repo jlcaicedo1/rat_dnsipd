@@ -401,7 +401,10 @@ export function ActivitiesPage() {
   }, [scopedActivityRecords]);
 
   function handlePrepareTreatment(activity: BackendActivity | ActivityRegistryRecord, mode: "edit" | "duplicate") {
-    if ("report" in activity) {
+    const originalBackend = actividadesBackendQuery.data?.data.find((a) => a.id === activity.id);
+    if (originalBackend) {
+      seedTreatmentDraftFromBackendActivity(originalBackend, mode);
+    } else if ("report" in activity) {
       seedTreatmentDraftFromActivity(activity, mode);
     } else {
       seedTreatmentDraftFromBackendActivity(activity, mode);

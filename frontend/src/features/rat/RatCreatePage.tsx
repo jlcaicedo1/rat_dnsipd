@@ -1006,7 +1006,7 @@ export function RatCreatePage() {
               description="Seleccione los grupos de personas cuyos datos intervienen en la actividad. Use Configurar para asignar categorias y campos a cada titular de forma independiente."
             >
               <div className="titular-grid">
-                {titularesOptions.map((titular) => {
+                {[...new Set([...titularesOptions, ...form.titulares])].map((titular) => {
                   const isSelected = form.titulares.includes(titular);
                   const fieldCount = getTitularSelectedFieldCount(form, titular);
                   const cats = getPerTitularCategoryNames(form, titular, pdDomains);

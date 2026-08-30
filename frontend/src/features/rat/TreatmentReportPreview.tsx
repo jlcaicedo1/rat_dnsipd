@@ -1,4 +1,5 @@
 import iessLogoUrl from "../../assets/iess-logo-color.png";
+import { buildInstitutionalReport, rptTable } from "../../utils/buildInstitutionalReport";
 import type { ReactNode, Ref } from "react";
 import type {
   ActivityRegistryRecord,
@@ -439,358 +440,11 @@ function fmtVal(value: ReportValue): string {
   return text.length > 0 ? text : "No documentado";
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-// ─── HTML generation helpers (for standalone print document) ─────────────────
-
-function cellHtml(text: string): string {
-  const parts = text
-    .split(/\s*[;\n]\s*/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (parts.length > 1) {
-    return `<ul class="report-field-list">${parts.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`;
-  }
-  return escapeHtml(text);
-}
-
-function rowHtml(label: string, value: ReportValue): string {
-  const formatted = fmtVal(value);
-  const isEmpty = formatted === "No documentado";
-  return `<tr>
-      <th scope="row">${label}</th>
-      <td${isEmpty ? ' class="report-empty-value"' : ""}>${isEmpty ? escapeHtml(formatted) : cellHtml(formatted)}</td>
-    </tr>`;
-}
-
-function sectionHtml(
-  num: number,
-  title: string,
-  rows: Array<{ label: string; value: ReportValue }>,
-): string {
-  return `<section class="report-section">
-    <div class="report-section-title">${num}. ${title}</div>
-    <table class="report-field-table">
-      <tbody>
-        ${rows.map((r) => rowHtml(r.label, r.value)).join("\n        ")}
-      </tbody>
-    </table>
-  </section>`;
-}
-
-function sigBlockHtml(
-  role: string,
-  roleClass: string,
-  subLabel: string,
-  name: string,
-  cargo: string,
-): string {
-  const isEmpty = !name.trim();
-  return `<div class="report-sig-block">
-    <div class="report-sig-role report-sig-role-${roleClass}">${role}</div>
-    <div class="report-sig-sublabel">${subLabel}</div>
-    <div class="report-sig-body">
-      <div class="report-sig-field">
-        <div class="report-sig-field-label">Nombre completo</div>
-        <div class="report-sig-field-value${isEmpty ? " report-sig-field-value-empty" : ""}">${escapeHtml(name.trim() || "___________________________________")}</div>
-      </div>
-      <div class="report-sig-field">
-        <div class="report-sig-field-label">Cargo / Función</div>
-        <div class="report-sig-field-value report-sig-field-value-muted">${escapeHtml(cargo || "___________________________________")}</div>
-      </div>
-      <div class="report-sig-draw">
-        <div class="report-sig-draw-text">
-          Firma electrónica certificada<br>
-          <small>Adjunte imagen, QR o referencia del gestor documental</small>
-        </div>
-      </div>
-    </div>
-    <div class="report-sig-footer">
-      <div class="report-sig-date-row">
-        <span class="report-sig-date-label">Fecha:</span>
-        <span class="report-sig-date-line"></span>
-      </div>
-      <div class="report-sig-ref-row">
-        <span class="report-sig-ref-label">Ref. firma electrónica:</span>
-        <span class="report-sig-ref-line"></span>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ─── print CSS (embedded in generated HTML document) ─────────────────────────
-
-const reportPrintStyles = `
-  :root { color-scheme: light; }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  /* ── PAGE LAYOUT ── */
-  @page {
-    size: A4 portrait;
-    margin: 20mm 15mm 18mm 15mm;
-
-    /* Running header — pages 2 onwards */
-    @top-left {
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-      content: "INSTITUTO ECUATORIANO DE SEGURIDAD SOCIAL";
-      font-size: 7pt; font-weight: 700; color: #1a3a5c;
-      border-bottom: 0.5pt solid #1a3a5c;
-      padding-bottom: 4pt; vertical-align: bottom;
-    }
-    @top-right {
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-      content: "Registro de Actividad de Tratamiento";
-      font-size: 7pt; color: #6b8099;
-      border-bottom: 0.5pt solid #1a3a5c;
-      padding-bottom: 4pt; vertical-align: bottom; text-align: right;
-    }
-
-    /* Footer — all pages */
-    @bottom-left {
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-      content: "IESS \\00b7 Sistema RAT \\2014 Documento Institucional Reservado";
-      font-size: 7pt; color: #6b8099;
-      border-top: 0.5pt solid #cdd9e8;
-      padding-top: 4pt; vertical-align: top;
-    }
-    @bottom-right {
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-      content: "P\\00e1gina " counter(page) " de " counter(pages);
-      font-size: 8pt; font-weight: 700; color: #1a3a5c;
-      border-top: 0.5pt solid #cdd9e8;
-      padding-top: 4pt; vertical-align: top; text-align: right;
-    }
-  }
-
-  /* First page: letterhead handles the header — suppress margin-box header */
-  @page :first {
-    margin-top: 12mm;
-    @top-left  { content: ""; border: none; padding: 0; }
-    @top-right { content: ""; border: none; padding: 0; }
-  }
-
-  /* ── BODY ── */
-  body {
-    margin: 0; padding: 0;
-    background: #ffffff;
-    color: #0e1f33;
-    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-    font-size: 9pt;
-    line-height: 1.5;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    orphans: 3; widows: 3;
-  }
-
-  /* ── SHEET ── */
-  .report-sheet { background: #fff; }
-
-  /* ── LETTERHEAD ── */
-  .report-letterhead {
-    display: flex; align-items: center; gap: 12px;
-    padding-bottom: 10px;
-    border-bottom: 3px solid #1a3a5c;
-  }
-  .report-letterhead-logo { flex-shrink: 0; }
-  .report-letterhead-img { height: 52px; width: auto; display: block; }
-  .report-letterhead-center { flex: 1; min-width: 0; }
-  .report-letterhead-institution {
-    display: block; font-size: 10.5pt; font-weight: 800;
-    color: #1a3a5c; line-height: 1.2;
-  }
-  .report-letterhead-dept {
-    display: block; font-size: 8pt; color: #2c4a66;
-    margin-top: 3px; line-height: 1.3;
-  }
-  .report-letterhead-sys {
-    display: block; font-size: 7pt; color: #5a7890; margin-top: 2px;
-  }
-  .report-letterhead-ref { text-align: right; flex-shrink: 0; min-width: 100px; }
-  .report-letterhead-doctype {
-    display: inline-block; background: #1a3a5c; color: #fff;
-    font-size: 7.5pt; font-weight: 800; letter-spacing: 0.14em;
-    padding: 3px 9px; border-radius: 3px;
-  }
-  .report-letterhead-code {
-    font-size: 8.5pt; color: #1a3a5c; font-weight: 700; margin-top: 4px;
-  }
-  .report-letterhead-ver { font-size: 7.5pt; color: #6b8099; margin-top: 2px; }
-
-  /* ── BANNER ── */
-  .report-doc-banner {
-    background: #1a3a5c; color: #fff;
-    text-align: center; font-size: 9.5pt; font-weight: 800;
-    letter-spacing: 0.05em; padding: 8px 16px; text-transform: uppercase;
-  }
-
-  /* ── META STRIP ── */
-  .report-meta-strip {
-    display: flex; border: 1px solid #cdd9e8; border-top: 0;
-    background: #f4f7fb; font-size: 7.5pt;
-  }
-  .report-meta-item {
-    display: flex; flex-direction: column; gap: 1px;
-    padding: 6px 10px; border-right: 1px solid #cdd9e8;
-    flex: 1; min-width: 0;
-  }
-  .report-meta-item-wide { flex: 2; }
-  .report-meta-item:last-child { border-right: 0; }
-  .report-meta-label {
-    font-weight: 700; color: #3d5c77;
-    font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  .report-meta-val { color: #0e1f33; overflow-wrap: anywhere; line-height: 1.3; }
-
-  /* ── CONTENT SECTIONS ── */
-  .report-sections { display: grid; gap: 6px; margin-top: 8px; }
-  .report-section {
-    border: 1px solid #cdd9e8; overflow: hidden;
-    break-inside: avoid; page-break-inside: avoid;
-  }
-  .report-section-title {
-    background: #eaf0f8; color: #1a3a5c;
-    font-size: 7pt; font-weight: 800;
-    padding: 6px 10px 6px 12px;
-    text-transform: uppercase; letter-spacing: 0.07em;
-    border-left: 4px solid #1a3a5c; text-align: left;
-    break-after: avoid; page-break-after: avoid;
-  }
-
-  /* ── FIELD TABLE ── */
-  .report-field-table {
-    border-collapse: collapse; width: 100%; font-size: 8.5pt;
-  }
-  .report-field-table th,
-  .report-field-table td {
-    border-top: 1px solid #e8eef5;
-    padding: 5px 10px; vertical-align: top; line-height: 1.5;
-  }
-  .report-field-table tr:first-child th,
-  .report-field-table tr:first-child td { border-top: 0; }
-  .report-field-table tr {
-    break-inside: avoid; page-break-inside: avoid;
-  }
-  .report-field-table tr:nth-child(even) td,
-  .report-field-table tr:nth-child(even) th { background: #f8fbfd; }
-  .report-field-table th {
-    color: #1a3a5c; font-size: 7.5pt; font-weight: 700;
-    text-align: left; width: 30%;
-    padding-right: 10px; border-right: 2px solid #dce8f2;
-    background: #f4f7fb;
-  }
-  .report-field-table td { color: #0e1f33; overflow-wrap: anywhere; }
-  .report-empty-value { color: #94a3b8; font-style: italic; }
-  .report-field-list { margin: 0; padding: 0 0 0 14px; line-height: 1.55; }
-  .report-field-list li { margin-bottom: 1px; }
-
-  /* ── SIGNATURE SECTION ── */
-  .report-sig-wrap {
-    margin-top: 10px; border: 1px solid #cdd9e8;
-    break-inside: avoid; page-break-inside: avoid;
-  }
-  .report-sig-banner {
-    background: #1a3a5c; color: #fff;
-    font-size: 7.5pt; font-weight: 800;
-    padding: 7px 12px 7px 16px;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    border-left: 4px solid #c8a420; text-align: left;
-  }
-  .report-sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
-  .report-sig-block {
-    border-right: 1px solid #cdd9e8;
-    display: flex; flex-direction: column;
-  }
-  .report-sig-block:last-child { border-right: 0; }
-  .report-sig-role {
-    text-align: left; font-size: 7pt; font-weight: 800;
-    letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 10px;
-  }
-  .report-sig-role-elaborado { background: #1e4d7b; color: #fff; }
-  .report-sig-role-revisado  { background: #0f6fae; color: #fff; }
-  .report-sig-role-autoridad { background: #25578a; color: #fff; }
-  .report-sig-sublabel {
-    font-size: 6.5pt; color: #3d5c77; text-align: left;
-    padding: 4px 10px; background: #eef3f9;
-    border-bottom: 1px solid #cdd9e8;
-  }
-  .report-sig-body {
-    padding: 9px 10px; flex: 1;
-    display: flex; flex-direction: column; gap: 7px;
-  }
-  .report-sig-field { display: grid; gap: 2px; }
-  .report-sig-field-label {
-    font-size: 6.5pt; font-weight: 700; color: #3d5c77;
-    text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  .report-sig-field-value {
-    font-size: 8.5pt; color: #0e1f33; min-height: 17px;
-    border-bottom: 1px solid #b0c4d8; padding-bottom: 2px;
-    overflow-wrap: anywhere;
-  }
-  .report-sig-field-value-muted { color: #5a7890; }
-  .report-sig-field-value-empty { color: #94a3b8; font-style: italic; }
-  .report-sig-draw {
-    border: 1px dashed #b0c4d8; height: 52px; margin-top: 5px;
-    display: flex; align-items: center; justify-content: center;
-    background: #fafcff;
-  }
-  .report-sig-draw-text {
-    font-size: 7pt; color: #94a3b8; text-align: center; line-height: 1.3;
-  }
-  .report-sig-draw-text small { font-size: 6.5pt; }
-  .report-sig-footer {
-    background: #f4f7fb; border-top: 1px solid #cdd9e8;
-    padding: 7px 10px; display: grid; gap: 4px;
-  }
-  .report-sig-date-row,
-  .report-sig-ref-row { display: flex; align-items: flex-end; gap: 5px; }
-  .report-sig-date-label,
-  .report-sig-ref-label {
-    font-size: 7pt; color: #3d5c77; font-weight: 600;
-    white-space: nowrap; flex-shrink: 0;
-  }
-  .report-sig-date-line,
-  .report-sig-ref-line {
-    flex: 1; border-bottom: 1px solid #8fa9c0; margin-bottom: 2px;
-  }
-
-  /* ── DOCUMENT FOOTER (screen only; @page handles print footer) ── */
-  .report-doc-footer {
-    display: flex; justify-content: space-between; align-items: center;
-    border-top: 1px solid #cdd9e8; padding-top: 7px; margin-top: 10px;
-    font-size: 7pt; color: #6b8099;
-  }
-
-  /* ── INSTITUTIONAL COVER PAGE (portada) ── */
-  .rpt-cover {
-    text-align: center; padding: 28mm 0 20mm;
-    border-bottom: 3px solid #e8a000;
-    page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact;
-  }
-  .rpt-cover img { height: 72px; margin-bottom: 18px; display: block; margin-left: auto; margin-right: auto; }
-  .rc-org { font-size: 10pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.4px; color: #41546a }
-  .rc-dep { font-size: 9.5pt; color: #6c757d; margin-top: 4px }
-  .rc-tt { font-size: 20pt; font-weight: 800; color: #1a3a5c; margin: 22px 0 8px; line-height: 1.22 }
-  .rc-sub { font-size: 10.5pt; color: #41546a; margin-bottom: 18px }
-  .rc-obj { font-size: 10.5pt; font-weight: 600; color: #1f2b38; background: #f2f5fa; border: 1px solid #c8d0dc; border-radius: 6px; padding: 12px 16px; margin: 0 auto 18px; max-width: 80%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .rc-cod { display: inline-block; background: #1a3a5c; color: #fff; font-size: 10pt; font-weight: 700; letter-spacing: 1px; padding: 5px 16px; border-radius: 5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .rpt-meta-table { width: 100%; border-collapse: collapse; font-size: 9.4pt; margin-top: 20px }
-  .rpt-meta-table td { border: 1px solid #cdd5e0; padding: 6px 9px }
-  .rpt-meta-table td.k { background: #f2f5fa; font-weight: 600; width: 35%; color: #33506e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-`;
-
-// ─── public print API ─────────────────────────────────────────────────────────
+// ─── print document (standalone HTML via buildInstitutionalReport) ────────────
 
 /**
- * Generates a complete, self-contained HTML document from report data.
- * Content is built from data directly — independent of the current DOM state.
+ * Generates a complete, self-contained HTML document from report data
+ * using the institutional report format shared with EIPD reports.
  */
 export function buildReportDocument(
   title: string,
@@ -811,163 +465,146 @@ export function buildReportDocument(
   const lastUpdate = activity?.fechaActualizacion ?? report.ultimaActualizacion;
   const eipdRequired = activity?.requiereEipd ?? report.requiereEipd;
 
-  const today = new Date().toLocaleDateString("es-EC", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+  const fv = (v: ReportValue) => fmtVal(v);
+  const fieldTable = (rows: Array<{ label: string; value: ReportValue }>) =>
+    rptTable(
+      ["Campo", "Valor"],
+      rows.map((r) => [r.label, fv(r.value)]),
+      ["35%", "65%"],
+    );
+
+  return buildInstitutionalReport({
+    logoSrc,
+    title: "Registro de Actividad de Tratamiento de Datos Personales",
+    subtitle: "Ley Orgánica de Protección de Datos Personales y su Reglamento General",
+    objective: fv(activityName),
+    code: activityCode,
+    metadata: [
+      ["Responsable del tratamiento", fv(responsibleDependency)],
+      ["Actividad de tratamiento", fv(activityName)],
+      ["Código RAT", fv(report.codigoRat)],
+      ["Dependencia ejecutora", fv(executingDependency)],
+      ["Estado del documento", fv(status)],
+      ["Versión", version],
+      ["Fecha de levantamiento", fv(report.fechaCreacion)],
+      ["Nivel de riesgo", fv(riskLevel)],
+    ],
+    toc: [
+      "Información general",
+      "Finalidad y base de licitud",
+      "Titulares y categorías de datos personales",
+      "Activos de información asociados",
+      "Operación del tratamiento",
+      "Destinatarios y transferencias",
+      "Conservación y supresión",
+      "Medidas de seguridad",
+      "Nivel de riesgo y evaluación EIPD",
+    ],
+    sections: [
+      {
+        heading: "1. Información general",
+        html: fieldTable([
+          { label: "Código RAT", value: report.codigoRat },
+          { label: "Código de actividad", value: activityCode },
+          { label: "Nombre de la actividad", value: activityName },
+          { label: "Dependencia responsable", value: responsibleDependency },
+          { label: "Dependencia ejecutora / Unidad", value: executingDependency },
+          { label: "Proceso relacionado", value: report.procesoRelacionado },
+          { label: "Subproceso", value: report.subproceso },
+          { label: "Fecha de levantamiento", value: report.fechaCreacion },
+          { label: "Última actualización", value: lastUpdate },
+        ]),
+      },
+      {
+        heading: "2. Finalidad y base de licitud",
+        html: fieldTable([
+          { label: "Finalidad específica", value: report.finalidadEspecifica },
+          { label: "Base de licitud", value: report.baseLicitud },
+          { label: "Norma aplicable", value: report.normaAplicable },
+        ]),
+      },
+      {
+        heading: "3. Titulares y categorías de datos personales",
+        html: fieldTable([
+          { label: "Tipos de titulares", value: report.titulares },
+          { label: "Categorías de datos personales", value: report.categoriasDatos },
+          { label: "Datos sensibles", value: report.datosSensibles },
+          { label: "Datos de niños, niñas y adolescentes", value: report.datosNna },
+        ]),
+      },
+      {
+        heading: "4. Activos de información asociados",
+        html: fieldTable([
+          {
+            label: "Activo electrónico",
+            value: report.activoElectronico ?? report.activosInformacionAsociados,
+          },
+          { label: "Activo físico", value: report.activoFisico },
+          { label: "Tipo del activo", value: report.tipoActivo },
+          { label: "Base de datos / Repositorio", value: report.baseDatosRepositorio },
+        ]),
+      },
+      {
+        heading: "5. Operación del tratamiento",
+        html: fieldTable([
+          { label: "Origen de los datos", value: report.origenDatos },
+          { label: "Medios de recolección", value: report.mediosRecoleccion },
+          { label: "Acciones del tratamiento", value: report.accionesTratamiento },
+        ]),
+      },
+      {
+        heading: "6. Destinatarios y transferencias",
+        html: fieldTable([
+          { label: "Destinatarios internos", value: report.destinatariosInternos },
+          { label: "Destinatarios externos", value: report.destinatariosExternos },
+          {
+            label: "Transferencias internacionales",
+            value: report.transferenciasInternacionales,
+          },
+          { label: "País destino", value: report.paisDestino },
+          { label: "Mecanismo de transferencia", value: report.mecanismoTransferencia },
+        ]),
+      },
+      {
+        heading: "7. Conservación y supresión",
+        html: fieldTable([
+          { label: "Plazo de conservación", value: report.plazoConservacion },
+          { label: "Criterios de conservación", value: report.criteriosConservacion },
+          { label: "Supresión / Anonimización", value: report.supresionAnonimizacion },
+        ]),
+      },
+      {
+        heading: "8. Medidas de seguridad",
+        html: fieldTable([{ label: "Controles aplicados", value: report.medidasSeguridad }]),
+      },
+      {
+        heading: "9. Nivel de riesgo y evaluación EIPD",
+        html: fieldTable([
+          { label: "Nivel de riesgo", value: riskLevel },
+          { label: "Requiere EIPD", value: eipdRequired },
+        ]),
+      },
+    ],
+    signatures: [
+      {
+        role: "ELABORADO POR",
+        name: signatures.elaboradoPorNombre,
+        cargo: signatures.elaboradoPorCargo,
+      },
+      {
+        role: "REVISADO POR",
+        name: signatures.revisadoPorNombre,
+        cargo: signatures.revisadoPorCargo,
+      },
+      {
+        role: "AUTORIDAD",
+        name: signatures.autoridadNombre,
+        cargo: signatures.autoridadCargo,
+      },
+    ],
+    footerText:
+      "Instituto Ecuatoriano de Seguridad Social — Dirección Nacional de Seguridad de la Información y Protección de Datos | Registro de Actividades de Tratamiento (RAT) | Documento de uso interno",
   });
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)}</title>
-  <style>${reportPrintStyles}</style>
-</head>
-<body>
-
-<!-- PORTADA INSTITUCIONAL -->
-<div class="rpt-cover">
-  <img src="${logoSrc}" alt="IESS" />
-  <div class="rc-org">Instituto Ecuatoriano de Seguridad Social</div>
-  <div class="rc-dep">Dirección Nacional de Seguridad de la Información y Protección de Datos — DNSIPD</div>
-  <div class="rc-tt">Registro de Actividad de Tratamiento de Datos Personales</div>
-  <div class="rc-sub">Ley Orgánica de Protección de Datos Personales y su Reglamento General</div>
-  <div class="rc-obj">${escapeHtml(activityName ?? "")}</div>
-  <div class="rc-cod">${escapeHtml(activityCode)}</div>
-  <table class="rpt-meta-table" style="margin-top:22px;text-align:left"><tbody>
-    <tr><td class="k">Dependencia responsable</td><td>${escapeHtml(fmtVal(responsibleDependency))}</td></tr>
-    <tr><td class="k">Dependencia ejecutora</td><td>${escapeHtml(fmtVal(executingDependency))}</td></tr>
-    <tr><td class="k">Estado del documento</td><td>${escapeHtml(fmtVal(status))}</td></tr>
-    <tr><td class="k">Versión</td><td>${escapeHtml(version)}</td></tr>
-    <tr><td class="k">Fecha de levantamiento</td><td>${escapeHtml(fmtVal(report.fechaCreacion))}</td></tr>
-    <tr><td class="k">Nivel de riesgo</td><td>${escapeHtml(fmtVal(riskLevel))}</td></tr>
-    <tr><td class="k">Fecha de generación</td><td>${today}</td></tr>
-  </tbody></table>
-</div>
-
-<div class="report-sheet">
-
-  <!-- MEMBRETE INSTITUCIONAL -->
-  <div class="report-letterhead">
-    <div class="report-letterhead-logo">
-      <img src="${logoSrc}" alt="IESS" class="report-letterhead-img" />
-    </div>
-    <div class="report-letterhead-center">
-      <strong class="report-letterhead-institution">INSTITUTO ECUATORIANO DE SEGURIDAD SOCIAL</strong>
-      <span class="report-letterhead-dept">Dirección Nacional de Servicios Institucionales de Protección de Datos Personales</span>
-      <span class="report-letterhead-sys">Sistema RAT — Registro de Actividades de Tratamiento</span>
-    </div>
-    <div class="report-letterhead-ref">
-      <span class="report-letterhead-doctype">RAT</span>
-      <div class="report-letterhead-code">${escapeHtml(activityCode)}</div>
-      <div class="report-letterhead-ver">Versión ${escapeHtml(version)}</div>
-    </div>
-  </div>
-
-  <!-- BANNER -->
-  <div class="report-doc-banner">REGISTRO DE ACTIVIDAD DE TRATAMIENTO DE DATOS PERSONALES</div>
-
-  <!-- FRANJA DE METADATOS -->
-  <div class="report-meta-strip">
-    <div class="report-meta-item report-meta-item-wide">
-      <span class="report-meta-label">Actividad</span>
-      <span class="report-meta-val">${escapeHtml(fmtVal(activityName))}</span>
-    </div>
-    <div class="report-meta-item report-meta-item-wide">
-      <span class="report-meta-label">Dependencia responsable</span>
-      <span class="report-meta-val">${escapeHtml(fmtVal(responsibleDependency))}</span>
-    </div>
-    <div class="report-meta-item">
-      <span class="report-meta-label">Estado</span>
-      <span class="report-meta-val">${escapeHtml(fmtVal(status))}</span>
-    </div>
-    <div class="report-meta-item">
-      <span class="report-meta-label">Versión</span>
-      <span class="report-meta-val">${escapeHtml(version)}</span>
-    </div>
-    <div class="report-meta-item">
-      <span class="report-meta-label">Levantamiento</span>
-      <span class="report-meta-val">${escapeHtml(fmtVal(report.fechaCreacion))}</span>
-    </div>
-  </div>
-
-  <!-- SECCIONES DE CONTENIDO -->
-  <div class="report-sections">
-    ${sectionHtml(1, "Información general", [
-      { label: "Código RAT", value: report.codigoRat },
-      { label: "Código de actividad", value: activityCode },
-      { label: "Nombre de la actividad", value: activityName },
-      { label: "Dependencia responsable", value: responsibleDependency },
-      { label: "Dependencia ejecutora / Unidad", value: executingDependency },
-      { label: "Proceso relacionado", value: report.procesoRelacionado },
-      { label: "Subproceso", value: report.subproceso },
-      { label: "Fecha de levantamiento", value: report.fechaCreacion },
-      { label: "Última actualización", value: lastUpdate },
-    ])}
-    ${sectionHtml(2, "Finalidad y base de licitud", [
-      { label: "Finalidad específica", value: report.finalidadEspecifica },
-      { label: "Base de licitud", value: report.baseLicitud },
-      { label: "Norma aplicable", value: report.normaAplicable },
-    ])}
-    ${sectionHtml(3, "Titulares y categorías de datos personales", [
-      { label: "Tipos de titulares", value: report.titulares },
-      { label: "Categorías de datos personales", value: report.categoriasDatos },
-      { label: "Datos sensibles", value: report.datosSensibles },
-      { label: "Datos de niños, niñas y adolescentes", value: report.datosNna },
-    ])}
-    ${sectionHtml(4, "Activos de información asociados", [
-      { label: "Activo electrónico", value: report.activoElectronico ?? report.activosInformacionAsociados },
-      { label: "Activo físico", value: report.activoFisico },
-      { label: "Tipo del activo", value: report.tipoActivo },
-      { label: "Base de datos / Repositorio", value: report.baseDatosRepositorio },
-    ])}
-    ${sectionHtml(5, "Operación del tratamiento", [
-      { label: "Origen de los datos", value: report.origenDatos },
-      { label: "Medios de recolección", value: report.mediosRecoleccion },
-      { label: "Acciones del tratamiento", value: report.accionesTratamiento },
-    ])}
-    ${sectionHtml(6, "Destinatarios y transferencias", [
-      { label: "Destinatarios internos", value: report.destinatariosInternos },
-      { label: "Destinatarios externos", value: report.destinatariosExternos },
-      { label: "Transferencias internacionales", value: report.transferenciasInternacionales },
-      { label: "País destino", value: report.paisDestino },
-      { label: "Mecanismo de transferencia", value: report.mecanismoTransferencia },
-    ])}
-    ${sectionHtml(7, "Conservación y supresión", [
-      { label: "Plazo de conservación", value: report.plazoConservacion },
-      { label: "Criterios de conservación", value: report.criteriosConservacion },
-      { label: "Supresión / Anonimización", value: report.supresionAnonimizacion },
-    ])}
-    ${sectionHtml(8, "Medidas de seguridad", [
-      { label: "Controles aplicados", value: report.medidasSeguridad },
-    ])}
-    ${sectionHtml(9, "Nivel de riesgo y evaluación EIPD", [
-      { label: "Nivel de riesgo", value: riskLevel },
-      { label: "Requiere EIPD", value: eipdRequired },
-    ])}
-  </div>
-
-  <!-- SECCIÓN DE FIRMAS -->
-  <div class="report-sig-wrap">
-    <div class="report-sig-banner">10. Formalización — Firmas de Aprobación</div>
-    <div class="report-sig-grid">
-      ${sigBlockHtml("ELABORADO POR", "elaborado", "Propietario / Levantamiento", signatures.elaboradoPorNombre, signatures.elaboradoPorCargo)}
-      ${sigBlockHtml("REVISADO POR", "revisado", "Asesoría DPD / Revisor", signatures.revisadoPorNombre, signatures.revisadoPorCargo)}
-      ${sigBlockHtml("AUTORIDAD", "autoridad", "Autoridad de la dependencia", signatures.autoridadNombre, signatures.autoridadCargo)}
-    </div>
-  </div>
-
-  <!-- PIE DE PÁGINA (visible en pantalla; @page maneja el pie en impresión) -->
-  <div class="report-doc-footer">
-    <span>IESS — Sistema RAT | Documento institucional reservado</span>
-    <span>Generado: ${escapeHtml(today)}</span>
-  </div>
-
-</div>
-</body>
-</html>`;
 }
 
 /** Opens a print dialog with the complete report generated from data. */
