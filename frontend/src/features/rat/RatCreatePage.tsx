@@ -1762,7 +1762,7 @@ export function RatCreatePage() {
                 </summary>
                 <div className="modal-domain-body">
                   <div className="personal-data-field-grid">
-                    {domain.fields.map((field) => (
+                    {[...new Set([...domain.fields, ...selection.fields])].map((field) => (
                       <label key={field} className="personal-data-field-chip">
                         <input
                           type="checkbox"

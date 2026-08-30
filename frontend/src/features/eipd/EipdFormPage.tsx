@@ -237,26 +237,54 @@ export function EipdFormPage() {
 
   function handleGenerarInforme() {
     const fv = (key: string) => form[key] ?? "";
+    const actividadNombre = fv("portada-actividad") || fv("s1-descripcion") || "No consignado";
+    const responsable = fv("portada-responsable") || "No consignado";
+    const dependencia = fv("portada-dependencia") || "—";
+    const granEscala = fv("s1-gran-escala");
 
-    /* Sección 1: contexto del tratamiento */
+    /* S1: Objeto, alcance y marco normativo */
+    const s1Html = `<p>El presente informe documenta la evaluación de impacto del tratamiento de datos personales correspondiente a <strong>${actividadNombre}</strong>, ejecutado por <strong>${responsable}</strong> en calidad de responsable del tratamiento.</p>
+<p>La evaluación de impacto consiste en un análisis preventivo, de naturaleza técnica, mediante el cual el responsable valora los impactos reales del tratamiento de datos personales, a efecto de identificar y mitigar los riesgos relacionados con el cumplimiento de los principios y el respeto de los derechos y obligaciones establecidos en la normativa, conforme al artículo 29 del Reglamento a la Ley Orgánica de Protección de Datos Personales.</p>
+<p>El análisis se desarrolla como una gestión de riesgos completa y no como una lista de verificación. Comprende el establecimiento del contexto, la identificación de riesgos, el análisis de riesgos, la evaluación del impacto y el tratamiento del riesgo, en concordancia con los artículos 37, 40, 41 y 42 de la Ley Orgánica de Protección de Datos Personales y con los artículos 29 a 32 de su Reglamento.</p>`;
+
+    /* S2: Determinación de la obligatoriedad */
+    const s2ObligHtml = rptTable(
+      ["Supuesto / Indicador", "Verificación"],
+      [
+        ["a) Evaluación sistemática basada en tratamiento automatizado (perfilamiento) con efectos jurídicos", fv("portada-perf") || "Pendiente"],
+        ["b) Tratamiento a gran escala de categorías especiales de datos", granEscala || "Pendiente"],
+        ["c) Observación sistemática a gran escala de zona de acceso público", "No"],
+        ["d) Requerimiento expreso de la Autoridad de Protección de Datos Personales", "No"],
+        ["e) Otras operaciones determinadas por la Autoridad mediante normativa", "No"],
+        ["Datos de grupos de atención prioritaria o en situación de vulnerabilidad", fv("portada-grupos-vuln") || "Pendiente"],
+        ["Uso de tecnologías innovadoras o de inteligencia artificial", fv("portada-ia") || "Pendiente"],
+        ["Transferencias o comunicaciones internacionales de datos", "No"],
+        ["Cruce, enriquecimiento o interconexión de bases de datos", "No"],
+      ],
+      ["75%", "25%"],
+    );
+
+    /* S3: Metodología aplicada */
+    const s3MetodHtml = `<p>Conforme al artículo 40 de la Ley Orgánica de Protección de Datos Personales, el análisis de riesgos, amenazas y vulnerabilidades se realizó mediante una metodología que considera las particularidades del tratamiento, las particularidades de las partes involucradas y las categorías y el volumen de datos personales objeto de tratamiento.</p>
+<p>Todo valor de entrada empleado en el análisis —probabilidad, frecuencia, impacto y nivel de riesgo— se acompaña de su rationale, entendido como la justificación de las métricas, modelos y criterios utilizados para calibrar los valores asignados. Desde la perspectiva del titular, la protección de los derechos y libertades se exige al cien por ciento.</p>`;
+
+    /* S4: Descripción sistemática del tratamiento y sus finalidades */
     const ctx = rptTable(
       ["Campo", "Valor"],
       [
-        ["Actividad de tratamiento", fv("portada-actividad")],
-        ["Responsable del tratamiento", fv("portada-responsable")],
-        ["Dependencia / Unidad", fv("portada-dependencia")],
+        ["Actividad de tratamiento", actividadNombre],
+        ["Responsable del tratamiento", responsable],
+        ["Dependencia / Unidad", dependencia],
         ["Versión del documento", fv("portada-version") || "1.0"],
         ["Fecha de inicio", fv("portada-fecha-inicio")],
         ["Descripción del tratamiento", fv("s1-descripcion")],
         ["Finalidad específica", fv("s1-finalidad")],
         ["Base de licitud", fv("s1-licitud")],
         ["Plazo de conservación", fv("s1-plazo")],
-        ["¿Tratamiento a gran escala?", fv("s1-gran-escala")],
+        ["¿Tratamiento a gran escala?", granEscala],
       ].filter(([, v]) => v),
       ["35%", "65%"],
     );
-
-    /* Sección 2: categorías de datos y activos */
     const datosHtml = datosRows.filter((r) => r.tipo || r.descripcion).length > 0
       ? rptTable(
           ["Categoría", "Tipo de dato", "Descripción", "Base licitud", "Plazo", "Destinatarios"],
@@ -272,7 +300,36 @@ export function EipdFormPage() {
         )
       : rptNote("No se han registrado activos de información.");
 
-    /* Sección 3: riesgos jurídicos */
+    /* S5: Necesidad y proporcionalidad */
+    const s5NecHtml = fv("s1-finalidad") && fv("s1-licitud")
+      ? rptTable(
+          ["Concepto", "Justificación"],
+          [
+            ["Finalidad específica", fv("s1-finalidad")],
+            ["Base de licitud", fv("s1-licitud")],
+            ["Plazo de conservación", fv("s1-plazo") || "—"],
+          ],
+          ["35%", "65%"],
+        )
+      : rptNote("Sección incompleta: el artículo 32, numeral 2, del Reglamento exige justificar expresamente la necesidad y la proporcionalidad de las operaciones de tratamiento respecto de la finalidad.");
+
+    /* S6: Mecanismos para el ejercicio de los derechos */
+    const s6DerechosHtml = rptNote("No se han documentado los mecanismos para el ejercicio de los derechos de los titulares. Este es un elemento de contenido mínimo de la evaluación de impacto.");
+
+    /* S7: Criterios de evaluación del riesgo */
+    const s7CritHtml = rptTable(
+      ["Nivel de riesgo", "Criterio de aceptación"],
+      [
+        ["Muy bajo", "Riesgo aceptable sin medidas adicionales"],
+        ["Bajo", "Riesgo aceptable con controles existentes"],
+        ["Medio", "Requiere medidas de mitigación identificadas"],
+        ["Alto", "Requiere plan de tratamiento prioritario"],
+        ["Muy alto", "Tratamiento no puede iniciarse sin reducción del riesgo"],
+      ],
+      ["25%", "75%"],
+    );
+
+    /* S8: Evaluación de riesgos jurídicos */
     const riesgoJuridico = S2_SCENARIOS
       .map((s, i) => {
         const st = s2State[i];
@@ -291,9 +348,9 @@ export function EipdFormPage() {
           riesgoJuridico,
           ["6%", "14%", "44%", "12%", "12%", "12%"],
         )
-      : rptNote("No se han evaluado escenarios de riesgos jurídicos.");
+      : rptNote("No se completaron escenarios de riesgo jurídico.");
 
-    /* Sección 4: riesgos de seguridad */
+    /* S9: Evaluación de riesgos de seguridad */
     const riesgoSeg = S3_SCENARIOS
       .map((s, i) => {
         const st = s3State[i];
@@ -312,9 +369,18 @@ export function EipdFormPage() {
           riesgoSeg,
           ["6%", "15%", "43%", "12%", "12%", "12%"],
         )
-      : rptNote("No se han evaluado escenarios de riesgos de seguridad.");
+      : rptNote("No se completaron escenarios de riesgo de seguridad.");
 
-    /* Sección 5: plan de tratamiento */
+    /* S10: Registro general de evaluación y priorización */
+    const registroHtml = s4Rows.filter((r) => r["ref"] || r["desc"]).length > 0
+      ? rptTable(
+          ["Ref.", "Descripción del riesgo", "Propietario", "Probabilidad", "Imp. inherente", "Imp. residual", "Prioridad"],
+          s4Rows.filter((r) => r["ref"] || r["desc"]).map((r) => [r["ref"] ?? "—", r["desc"] ?? "—", r["owner"] ?? "—", r["prob"] ?? "—", r["impInh"] ?? "—", r["impRes"] ?? "—", r["prioridad"] ?? "—"]),
+          ["8%", "30%", "14%", "12%", "12%", "12%", "12%"],
+        )
+      : rptNote("El registro general no ha sido generado. Utilice la sección 4 del formulario.");
+
+    /* S11: Plan de tratamiento del riesgo y riesgo residual */
     const planFiltered = s5Rows.filter((r) => r["medida"] || r["ref"]);
     const planHtml = planFiltered.length > 0
       ? rptTable(
@@ -322,44 +388,91 @@ export function EipdFormPage() {
           planFiltered.map((r) => [r["ref"] ?? "—", r["medida"] ?? "—", r["tipo"] ?? "—", r["responsable"] ?? "—", r["plazo"] ?? "—", r["estado"] ?? "—", r["impRes"] ?? "—"]),
           ["10%", "28%", "12%", "14%", "10%", "13%", "13%"],
         )
-      : rptNote("No se han registrado medidas de tratamiento en el plan.");
+      : rptNote("No se ha consolidado el plan de tratamiento.");
+
+    /* S12: Consulta a titulares y criterio del Delegado de Protección de Datos */
+    const s12DpdHtml = rptTable(
+      ["Concepto", "Detalle"],
+      [
+        ["Criterio del Delegado de Protección de Datos", fv("s7-riesgos") || "Pendiente de registrar"],
+        ["Decisión sobre el tratamiento evaluado", fv("s7-decision") || "Pendiente"],
+      ],
+      ["35%", "65%"],
+    );
+
+    /* S13: Conclusión y decisión del responsable */
+    const s13ConclHtml = fv("s7-conclusion")
+      ? rptTable(
+          ["Concepto", "Detalle"],
+          [
+            ["Conclusión", fv("s7-conclusion")],
+            ["Decisión", fv("s7-decision") || "—"],
+            ["Fecha de próxima revisión", fv("s7-fecha") || "—"],
+          ].filter(([, v]) => v),
+          ["35%", "65%"],
+        )
+      : rptNote("No se ha consignado la conclusión de la evaluación.");
+
+    /* S14: Anexos y evidencias de respaldo */
+    const anexosHtml = s6Rows.filter((r) => r["ref"] || r["desc"]).length > 0
+      ? rptTable(
+          ["Referencia", "Descripción del anexo", "Responsable", "Fecha", "Ubicación"],
+          s6Rows.filter((r) => r["ref"] || r["desc"]).map((r) => [r["ref"] ?? "—", r["desc"] ?? "—", r["responsable"] ?? "—", r["fecha"] ?? "—", r["ubicacion"] ?? "—"]),
+          ["12%", "36%", "18%", "14%", "20%"],
+        )
+      : rptNote("No se han registrado anexos. Los rationales sin evidencia documental de respaldo no son verificables ante la Autoridad.");
 
     const html = buildInstitutionalReport({
       logoSrc: iessLogoColor,
       title: "Evaluación de Impacto del Tratamiento de Datos Personales",
-      subtitle: "Conforme al Art. 29 del Reglamento a la Ley Orgánica de Protección de Datos Personales",
-      objective: fv("portada-actividad") || fv("s1-descripcion") || "Evaluación de impacto del tratamiento de datos personales",
-      code: trackingCode || doc?.codigo || "EIPDP-S/N",
+      subtitle: "Ley Orgánica de Protección de Datos Personales y su Reglamento General",
+      objective: actividadNombre,
+      code: trackingCode || doc?.codigo || "Sin código asignado",
       metadata: [
-        ["Código de seguimiento", trackingCode || doc?.codigo || "—"],
-        ["Actividad de tratamiento", fv("portada-actividad")],
-        ["Responsable del tratamiento", fv("portada-responsable")],
-        ["Dependencia / Unidad", fv("portada-dependencia")],
-        ["Versión", fv("portada-version") || "1.0"],
-        ["Estado", currentEstado],
-        ["Escenarios jurídicos evaluados", String(riesgoJuridico.length)],
-        ["Escenarios de seguridad evaluados", String(riesgoSeg.length)],
+        ["Responsable del tratamiento", responsable],
+        ["Tratamiento evaluado", actividadNombre],
+        ["Carácter de la evaluación", "Obligatoria"],
+        ["Clasificación documental", "Uso interno"],
       ],
       toc: [
-        "Contexto del tratamiento",
-        "Categorías de datos personales y activos",
-        "Evaluación de riesgos jurídicos",
-        "Evaluación de riesgos de seguridad",
-        "Plan de tratamiento del riesgo",
-        "Suscripción",
+        "1. Objeto, alcance y marco normativo",
+        "2. Determinación de la obligatoriedad de la evaluación",
+        "3. Metodología aplicada",
+        "4. Descripción sistemática del tratamiento y sus finalidades",
+        "5. Necesidad y proporcionalidad del tratamiento",
+        "6. Mecanismos para el ejercicio de los derechos de los titulares",
+        "7. Criterios de evaluación del riesgo",
+        "8. Evaluación de riesgos jurídicos de conformidad a la LOPDP",
+        "9. Evaluación de riesgos de seguridad de datos personales",
+        "10. Registro general de evaluación y priorización",
+        "11. Plan de tratamiento del riesgo y riesgo residual",
+        "12. Consulta a titulares y criterio del Delegado de Protección de Datos",
+        "13. Conclusión y decisión del responsable",
+        "14. Anexos y evidencias de respaldo",
+        "15. Suscripción",
       ],
       sections: [
-        { heading: "1. Contexto del tratamiento", html: ctx },
-        { heading: "2. Categorías de datos personales y activos de información", html: datosHtml + activosHtml },
-        { heading: "3. Evaluación de riesgos jurídicos (LOPDP)", html: juridHtml },
-        { heading: "4. Evaluación de riesgos de seguridad", html: segHtml },
-        { heading: "5. Plan de tratamiento del riesgo", html: planHtml },
+        { heading: "1. Objeto, alcance y marco normativo", html: s1Html },
+        { heading: "2. Determinación de la obligatoriedad de la evaluación", html: s2ObligHtml },
+        { heading: "3. Metodología aplicada", html: s3MetodHtml },
+        { heading: "4. Descripción sistemática del tratamiento y sus finalidades", html: ctx + datosHtml + activosHtml },
+        { heading: "5. Necesidad y proporcionalidad del tratamiento", html: s5NecHtml },
+        { heading: "6. Mecanismos para el ejercicio de los derechos de los titulares", html: s6DerechosHtml },
+        { heading: "7. Criterios de evaluación del riesgo", html: s7CritHtml },
+        { heading: "8. Evaluación de riesgos jurídicos de conformidad a la LOPDP", html: juridHtml },
+        { heading: "9. Evaluación de riesgos de seguridad de datos personales", html: segHtml },
+        { heading: "10. Registro general de evaluación y priorización", html: registroHtml },
+        { heading: "11. Plan de tratamiento del riesgo y riesgo residual", html: planHtml },
+        { heading: "12. Consulta a titulares y criterio del Delegado de Protección de Datos", html: s12DpdHtml },
+        { heading: "13. Conclusión y decisión del responsable", html: s13ConclHtml },
+        { heading: "14. Anexos y evidencias de respaldo", html: anexosHtml },
       ],
       signatures: [
-        { role: "Elaborado por", name: fv("portada-responsable") || "—", cargo: fv("portada-dependencia") || "—" },
-        { role: "Delegado de Protección de Datos", name: fv("s7-dpd") || "—", cargo: "DNSIPD — IESS" },
-        { role: "Autorizado por", name: "Director/a DNSIPD", cargo: "Dirección Nacional de Seguridad de la Información y Protección de Datos" },
+        { role: "Elaborado por", name: fv("s7-elab-nombre") || "—", cargo: fv("s7-elab-cargo") || dependencia },
+        { role: "Revisado por el Delegado de Protección de Datos", name: fv("s7-rev-nombre") || "—", cargo: "DNSIPD — IESS" },
+        { role: "Aprobado por el responsable del tratamiento", name: fv("s7-apr-nombre") || "—", cargo: fv("s7-apr-cargo") || "—" },
       ],
+      footerText: `Instituto Ecuatoriano de Seguridad Social — Dirección Nacional de Seguridad de la Información y Protección de Datos | Documento de Uso interno. Su reproducción total o parcial requiere autorización del responsable del tratamiento.`,
     });
 
     printInstitutionalReport(html, `EIPDP — ${trackingCode || doc?.codigo || "formulario"}`);
