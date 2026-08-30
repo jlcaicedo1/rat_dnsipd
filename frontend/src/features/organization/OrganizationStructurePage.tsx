@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppIcon } from "../../components/AppIcon";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
-import { TableScrollFrame } from "../../components/TableScrollFrame";
 import { apiClient } from "../../services/api-client";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
@@ -108,6 +107,12 @@ export function OrganizationStructurePage() {
     return map;
   }, [displayedUnits]);
 
+  const hasActiveFilter =
+    search.trim().length > 0 ||
+    statusFilter !== "Todas" ||
+    typeFilter !== "Todos" ||
+    usageFilter !== "Todos";
+
   const maintenanceUnits = useMemo(() => {
     const normalizedSearch = normalize(search);
 
@@ -124,6 +129,11 @@ export function OrganizationStructurePage() {
       return matchesSearch && matchesStatus && matchesType && matchesUsage;
     });
   }, [activityRecords, displayedUnits, ratRecords, search, statusFilter, typeFilter, usageFilter]);
+
+  const maintenanceUnitIds = useMemo(
+    () => new Set(maintenanceUnits.map((u) => u.id)),
+    [maintenanceUnits],
+  );
 
   const hasPendingChanges = Object.keys(pendingChangesById).length > 0;
   const activeUnit = activeUnitId ? displayedUnitsById[activeUnitId] ?? null : null;
@@ -357,99 +367,48 @@ export function OrganizationStructurePage() {
         </label>
       </div>
 
-      <section className="panel org-admin-single">
-        <div className="panel-heading panel-heading-compact">
-          <div>
-            <span className="brand-kicker">Tabla maestra</span>
-            <h3>Dependencias de la estructura organizacional</h3>
-          </div>
-          <div className="actions">
-            <span className="pill">{maintenanceUnits.length} registros filtrados</span>
-            {hasPendingChanges ? <span className="pill pill-muted">Cambios pendientes</span> : null}
-          </div>
+      <div className="panel-heading panel-heading-compact panel" style={{ marginBottom: "0.5rem" }}>
+        <div>
+          <span className="brand-kicker">Estructura jerarquica</span>
+          <h3>Dependencias de la estructura organizacional</h3>
         </div>
+        <div className="actions">
+          <span className="pill">{maintenanceUnits.length} unidades visibles</span>
+          {hasPendingChanges ? <span className="pill pill-muted">Cambios pendientes</span> : null}
+        </div>
+      </div>
 
-        <TableScrollFrame className="table-wrapper-matrix" maxHeight="none">
-          <table className="registry-table org-admin-table">
-            <thead>
-              <tr>
-                <th>Dependencia</th>
-                <th>Sigla</th>
-                <th>Tipo</th>
-                <th>Padre</th>
-                <th>Estado</th>
-                <th>Uso</th>
-                <th>Detalle</th>
-                <th>Accion</th>
-              </tr>
-            </thead>
-            <tbody>
-              {maintenanceUnits.map((unit) => {
-                const linkedRats = countLinkedRats(unit, ratRecords);
-                const linkedActivities = countLinkedActivities(unit, activityRecords);
-                const parentName = unit.parentId ? displayedUnitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz";
-                const hasPendingUnitChanges = Boolean(pendingChangesById[unit.id]);
-
-                return (
-                  <tr key={unit.id}>
-                    <td>
-                      <strong>{unit.nombre}</strong>
-                    </td>
-                    <td>{unit.sigla ?? "Pendiente"}</td>
-                    <td>{unit.tipo}</td>
-                    <td>{parentName}</td>
-                    <td>
-                      <div className="org-status-stack">
-                        <span
-                          className={
-                            unit.status === "Activa"
-                              ? "pill status-pill-vigente"
-                              : "pill status-pill-archivado"
-                          }
-                        >
-                          {unit.status}
-                        </span>
-                        {hasPendingUnitChanges ? (
-                          <small className="org-status-pending">Pendiente de guardar</small>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>
-                      {linkedRats} RAT · {linkedActivities} act.
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="button-table-action button-table-action-secondary"
-                        onClick={() => setActiveUnitId(unit.id)}
-                      >
-                        Detalle
-                      </button>
-                    </td>
-                    <td>
-                      {roleCapabilities.organization.updateStatus ? (
-                        <button
-                          type="button"
-                          className={
-                            unit.status === "Activa"
-                              ? "button-table-action button-table-action-danger"
-                              : "button-table-action"
-                          }
-                          onClick={() => handleQueueStatusChange(unit)}
-                        >
-                          {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
-                        </button>
-                      ) : (
-                        <span className="selection-action-empty">Solo lectura</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableScrollFrame>
-      </section>
+      <div className="catalog-tree">
+        {(childrenByParent["iess"] ?? [])
+          .filter(
+            (macro) =>
+              maintenanceUnitIds.has(macro.id) ||
+              hasVisibleDescendants(macro.id, childrenByParent, maintenanceUnitIds),
+          )
+          .map((macro) => {
+            const visibleChildren = (childrenByParent[macro.id] ?? []).filter(
+              (child) =>
+                maintenanceUnitIds.has(child.id) ||
+                hasVisibleDescendants(child.id, childrenByParent, maintenanceUnitIds),
+            );
+            return (
+              <MacroprocesoAccordion
+                key={macro.id}
+                unit={macro}
+                visibleChildren={visibleChildren}
+                childrenByParent={childrenByParent}
+                maintenanceUnitIds={maintenanceUnitIds}
+                ratRecords={ratRecords}
+                activityRecords={activityRecords}
+                pendingChangesById={pendingChangesById}
+                roleCapabilities={roleCapabilities}
+                forceOpen={hasActiveFilter}
+                onDetail={setActiveUnitId}
+                onQueueStatusChange={handleQueueStatusChange}
+              />
+            );
+          })}
+      </div>
 
       {activeUnit ? (
         <OrgUnitManagementModal
@@ -466,6 +425,260 @@ export function OrganizationStructurePage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function hasVisibleDescendants(
+  unitId: string,
+  childrenByParent: Record<string, OrgUnit[]>,
+  visibleIds: Set<string>,
+): boolean {
+  const children = childrenByParent[unitId] ?? [];
+  return children.some(
+    (child) => visibleIds.has(child.id) || hasVisibleDescendants(child.id, childrenByParent, visibleIds),
+  );
+}
+
+function MacroprocesoAccordion({
+  unit,
+  visibleChildren,
+  childrenByParent,
+  maintenanceUnitIds,
+  ratRecords,
+  activityRecords,
+  pendingChangesById,
+  roleCapabilities,
+  forceOpen,
+  onDetail,
+  onQueueStatusChange,
+}: {
+  unit: OrgUnit;
+  visibleChildren: OrgUnit[];
+  childrenByParent: Record<string, OrgUnit[]>;
+  maintenanceUnitIds: Set<string>;
+  ratRecords: BackendRat[];
+  activityRecords: BackendActivity[];
+  pendingChangesById: Record<string, PendingOrgUnitChange>;
+  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
+  forceOpen: boolean;
+  onDetail: (id: string) => void;
+  onQueueStatusChange: (unit: OrgUnit) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isOpen = forceOpen || open;
+  const totalCount = visibleChildren.reduce(
+    (acc, child) => acc + 1 + (childrenByParent[child.id] ?? []).filter((gc) => maintenanceUnitIds.has(gc.id)).length,
+    0,
+  );
+
+  return (
+    <div className="catalog-accordion catalog-accordion-dominio">
+      <button
+        type="button"
+        className="catalog-accordion-header"
+        aria-expanded={isOpen}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="catalog-accordion-chevron">{isOpen ? "▾" : "▸"}</span>
+        <span className="catalog-accordion-label">{unit.nombre}</span>
+        <span className="pill catalog-accordion-count">{totalCount} dependencias</span>
+      </button>
+
+      {isOpen && (
+        <div className="catalog-accordion-body">
+          {visibleChildren.map((child) => {
+            const visibleGrandchildren = (childrenByParent[child.id] ?? []).filter((gc) =>
+              maintenanceUnitIds.has(gc.id),
+            );
+            return (
+              <DireccionAccordion
+                key={child.id}
+                unit={child}
+                visibleChildren={visibleGrandchildren}
+                ratRecords={ratRecords}
+                activityRecords={activityRecords}
+                pendingChangesById={pendingChangesById}
+                roleCapabilities={roleCapabilities}
+                forceOpen={forceOpen}
+                onDetail={onDetail}
+                onQueueStatusChange={onQueueStatusChange}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DireccionAccordion({
+  unit,
+  visibleChildren,
+  ratRecords,
+  activityRecords,
+  pendingChangesById,
+  roleCapabilities,
+  forceOpen,
+  onDetail,
+  onQueueStatusChange,
+}: {
+  unit: OrgUnit;
+  visibleChildren: OrgUnit[];
+  ratRecords: BackendRat[];
+  activityRecords: BackendActivity[];
+  pendingChangesById: Record<string, PendingOrgUnitChange>;
+  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
+  forceOpen: boolean;
+  onDetail: (id: string) => void;
+  onQueueStatusChange: (unit: OrgUnit) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isOpen = forceOpen || open;
+  const hasChildren = visibleChildren.length > 0;
+  const linkedRats = countLinkedRats(unit, ratRecords);
+  const linkedActivities = countLinkedActivities(unit, activityRecords);
+  const hasPending = Boolean(pendingChangesById[unit.id]);
+
+  return (
+    <div className="catalog-accordion catalog-accordion-tipo">
+      <button
+        type="button"
+        className="catalog-accordion-header catalog-accordion-header-tipo"
+        aria-expanded={isOpen}
+        onClick={() => hasChildren && setOpen((v) => !v)}
+        style={hasChildren ? undefined : { cursor: "default" }}
+      >
+        {hasChildren ? (
+          <span className="catalog-accordion-chevron">{isOpen ? "▾" : "▸"}</span>
+        ) : (
+          <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
+        )}
+        {unit.sigla ? (
+          <span className="catalog-accordion-tipo-key">{unit.sigla}</span>
+        ) : null}
+        <span className="catalog-accordion-label">{unit.nombre}</span>
+        {hasChildren ? (
+          <span className="pill catalog-accordion-count">{visibleChildren.length} subdep.</span>
+        ) : null}
+        <span
+          className={
+            unit.status === "Activa"
+              ? "pill status-pill-vigente catalog-item-status"
+              : "pill status-pill-archivado catalog-item-status"
+          }
+        >
+          {unit.status}
+        </span>
+        <span className="catalog-item-desc">{linkedRats} RAT · {linkedActivities} act.</span>
+        {hasPending ? <small className="org-status-pending">Pendiente</small> : null}
+        <div className="catalog-item-actions">
+          <button
+            type="button"
+            className="button-table-action button-table-action-secondary"
+            onClick={(e) => { e.stopPropagation(); onDetail(unit.id); }}
+          >
+            Detalle
+          </button>
+          {roleCapabilities.organization.updateStatus ? (
+            <button
+              type="button"
+              className={
+                unit.status === "Activa"
+                  ? "button-table-action button-table-action-danger"
+                  : "button-table-action"
+              }
+              onClick={(e) => { e.stopPropagation(); onQueueStatusChange(unit); }}
+            >
+              {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
+            </button>
+          ) : null}
+        </div>
+      </button>
+
+      {isOpen && hasChildren && (
+        <div className="catalog-accordion-body catalog-items-list">
+          {visibleChildren.map((child) => (
+            <OrgUnitLeafRow
+              key={child.id}
+              unit={child}
+              ratRecords={ratRecords}
+              activityRecords={activityRecords}
+              pendingChangesById={pendingChangesById}
+              roleCapabilities={roleCapabilities}
+              onDetail={onDetail}
+              onQueueStatusChange={onQueueStatusChange}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrgUnitLeafRow({
+  unit,
+  ratRecords,
+  activityRecords,
+  pendingChangesById,
+  roleCapabilities,
+  onDetail,
+  onQueueStatusChange,
+}: {
+  unit: OrgUnit;
+  ratRecords: BackendRat[];
+  activityRecords: BackendActivity[];
+  pendingChangesById: Record<string, PendingOrgUnitChange>;
+  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
+  onDetail: (id: string) => void;
+  onQueueStatusChange: (unit: OrgUnit) => void;
+}) {
+  const linkedRats = countLinkedRats(unit, ratRecords);
+  const linkedActivities = countLinkedActivities(unit, activityRecords);
+  const hasPending = Boolean(pendingChangesById[unit.id]);
+
+  return (
+    <div className="catalog-item-wrapper">
+      <div className={`catalog-item-row ${unit.status === "Activa" ? "" : "catalog-item-inactive"}`}>
+        <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
+        <span
+          className={
+            unit.status === "Activa"
+              ? "pill status-pill-vigente catalog-item-status"
+              : "pill status-pill-archivado catalog-item-status"
+          }
+        >
+          {unit.status}
+        </span>
+        <span className="catalog-item-name">{unit.nombre}</span>
+        {unit.sigla ? <span className="catalog-item-code">{unit.sigla}</span> : null}
+        <span className="catalog-item-desc">{linkedRats} RAT · {linkedActivities} act.</span>
+        {hasPending ? <small className="org-status-pending">Pendiente</small> : null}
+        <div className="catalog-item-actions">
+          <button
+            type="button"
+            className="button-table-action button-table-action-secondary"
+            onClick={() => onDetail(unit.id)}
+          >
+            Detalle
+          </button>
+          {roleCapabilities.organization.updateStatus ? (
+            <button
+              type="button"
+              className={
+                unit.status === "Activa"
+                  ? "button-table-action button-table-action-danger"
+                  : "button-table-action"
+              }
+              onClick={() => onQueueStatusChange(unit)}
+            >
+              {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
+            </button>
+          ) : (
+            <span className="selection-action-empty">Solo lectura</span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
