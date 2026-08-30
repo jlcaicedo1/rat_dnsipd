@@ -81,6 +81,12 @@ function excelDateToDate(value: unknown): Date | null {
   return null;
 }
 
+type TitularCategoriaImport = {
+  titular: string;
+  catRaw: string;
+  campos: string[];
+};
+
 type ParsedActivity = {
   codigo: string;
   nombre: string;
@@ -90,8 +96,8 @@ type ParsedActivity = {
   finalidad: string;
   baseLicitudRaw: string;
   normaAplicable: string;
-  categoriasTitulares: string;
-  categoriasDatos: string[];
+  categoriasTitulares: string[];
+  titularCategorias: TitularCategoriaImport[];
   origenDatos: string;
   accionesTratamiento: string[];
   numTitulares: string;
@@ -137,7 +143,13 @@ function parseSheet(
 
     const codigo = col(0);
     const procesoParts = col(3).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const titularRaw = col(8);
     const catRaw = col(9);
+    // col(10) = "Descripción de Datos personales" — multi-line list of individual fields
+    const camposRaw = col(10)
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     const accionRaw = col(12);
     const acciones = accionRaw
       .split(/\r?\n/)
@@ -154,8 +166,8 @@ function parseSheet(
         finalidad: col(5),
         baseLicitudRaw: col(6),
         normaAplicable: col(7),
-        categoriasTitulares: col(8),
-        categoriasDatos: [],
+        categoriasTitulares: titularRaw ? [titularRaw] : [],
+        titularCategorias: [],
         origenDatos: col(11),
         accionesTratamiento: acciones,
         numTitulares: col(13),
@@ -174,8 +186,23 @@ function parseSheet(
 
     const act = byId.get(codigo)!;
 
-    if (catRaw && !act.categoriasDatos.includes(catRaw)) {
-      act.categoriasDatos.push(catRaw);
+    // Accumulate unique titulares
+    if (titularRaw && !act.categoriasTitulares.includes(titularRaw)) {
+      act.categoriasTitulares.push(titularRaw);
+    }
+
+    // Accumulate (titular × category → campos), deduplicating rows
+    if (catRaw) {
+      const existing = act.titularCategorias.find(
+        (tc) => tc.titular === titularRaw && tc.catRaw === catRaw,
+      );
+      if (existing) {
+        for (const campo of camposRaw) {
+          if (!existing.campos.includes(campo)) existing.campos.push(campo);
+        }
+      } else {
+        act.titularCategorias.push({ titular: titularRaw, catRaw, campos: camposRaw });
+      }
     }
 
     const nombreTercero = col(18);
@@ -265,7 +292,9 @@ export class ImportRatService {
 
     // Resolve and create missing data categories
     const categoriasNuevas: string[] = [];
-    const allCatRaws = [...new Set(activities.flatMap((a) => a.categoriasDatos))];
+    const allCatRaws = [
+      ...new Set(activities.flatMap((a) => a.titularCategorias.map((tc) => tc.catRaw))),
+    ];
     const catCodeMap = new Map<string, string>(); // raw name → DB code
 
     for (const raw of allCatRaws) {
@@ -320,17 +349,23 @@ export class ImportRatService {
       const baseLicitudCode = resolveBaseLicitud(act.baseLicitudRaw);
       const baseLicitudId = licitudById.get(baseLicitudCode) ?? null;
 
-      const resolvedCategorias = act.categoriasDatos
-        .map((raw) => catCodeMap.get(raw))
-        .filter((c): c is string => !!c);
+      // Build structured categoriasDatos: { titular, codigo, campos }[]
+      // This preserves the full Titular → Categoría → Campos relationship from the Excel
+      const categoriasDatosEstructurado = act.titularCategorias
+        .map((tc) => {
+          const codigo = catCodeMap.get(tc.catRaw);
+          if (!codigo) return null;
+          return { titular: tc.titular, codigo, campos: tc.campos };
+        })
+        .filter((item): item is { titular: string; codigo: string; campos: string[] } => item !== null);
 
       const versionData = {
         finalidad: act.finalidad || null,
         plazoConservacion: act.plazoConservacion || null,
         baseLicitudId,
         normaAplicable: act.normaAplicable || null,
-        categoriasTitulares: act.categoriasTitulares || null,
-        categoriasDatos: resolvedCategorias,
+        categoriasTitulares: act.categoriasTitulares.join(', ') || null,
+        categoriasDatos: categoriasDatosEstructurado,
         accionesTratamiento: act.accionesTratamiento,
         numTitulares: act.numTitulares || null,
         frecuenciaTratamiento: act.frecuenciaTratamiento || null,

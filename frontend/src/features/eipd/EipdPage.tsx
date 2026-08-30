@@ -758,9 +758,13 @@ function mapEstadoDisplay(raw: string): string {
 
 function buildEipdCaseFromBackend(activity: BackendActivity): EipdCaseRecord {
   const workspaceRecord = readEipdWorkspaceRecord(activity.id);
-  const categoriasDatosStr = Array.isArray(activity.categoriasDatos)
-    ? (activity.categoriasDatos as string[]).join(", ")
-    : String(activity.categoriasDatos ?? "");
+  // categoriasDatos may be string[] (legacy) or { titular, codigo, campos }[] (structured import)
+  const categoriasDatosStr = (() => {
+    const cat = activity.categoriasDatos;
+    if (!Array.isArray(cat) || cat.length === 0) return String(cat ?? "");
+    if (typeof cat[0] === "string") return (cat as string[]).join(", ");
+    return (cat as { codigo: string }[]).map((c) => c.codigo).join(", ");
+  })();
   const sensitiveData =
     normalize(categoriasDatosStr).includes("salud") ||
     normalize(categoriasDatosStr).includes("biometric") ||

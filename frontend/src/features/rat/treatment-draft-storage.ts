@@ -1,5 +1,37 @@
 import type { ActivityRegistryRecord } from "./rat-registry-data";
 
+// Mapping from DB CATEGORIA_DATO.codigo → short frontend domain id (must stay stable)
+const CATEGORIA_CODE_TO_SHORT_ID: Record<string, string> = {
+  DATOS_DE_IDENTIFICACION: "identificacion",
+  DATOS_DE_CONTACTO: "contacto",
+  DATOS_LABORALES: "laborales",
+  DATOS_ACADEMICOS: "academicos",
+  DATOS_DE_SALUD: "salud",
+  DATOS_BIOMETRICOS: "biometricos",
+  DATOS_FINANCIEROS_BANCARIOS_O_CREDITICIOS: "financieros",
+  DATOS_SOCIOECONOMICOS: "socioeconomicos",
+  DATOS_DE_PARENTESCO_O_VINCULO: "familiares",
+  DATOS_DE_FILIACION: "filiacion",
+  DATOS_DE_DIVERSIDAD_Y_AUTOIDENTIFICACION: "diversidad",
+  DATOS_DE_CONDICION_MIGRATORIA: "migratorios",
+  DATOS_RELACIONADOS_CON_AFILIACION_SINDICAL_O_GREMIAL: "sindicales",
+  DATOS_DE_PERSONAS_CON_DISCAPACIDAD_Y_SUS_SUSTITUTOS: "discapacidad",
+  DATOS_DE_MENORES_DE_EDAD: "menores",
+  DATOS_LEGALES_Y_DE_CUMPLIMIENTO_NORMATIVO: "judiciales",
+  DATOS_TECNOLOGICOS: "tecnologicos",
+};
+
+type StructuredCategoriaDato = {
+  titular: string;
+  codigo: string;
+  campos: string[];
+};
+
+type PersonalDataDomainSelection = {
+  fields: string[];
+  justification: string;
+};
+
 type BackendActivityForDraft = {
   id: number;
   codigo: string;
@@ -26,7 +58,7 @@ type StoredTreatmentDraft = {
   sourceLabel: string;
   dependenciaNombre: string;
   unidadEjecutoraNombre: string;
-  values: Record<string, string | string[]>;
+  values: Record<string, unknown>;
 };
 
 const TREATMENT_DRAFT_STORAGE_KEY = "rat_dnsipd_treatment_draft";
@@ -102,14 +134,58 @@ export function seedTreatmentDraftFromBackendActivity(
     return [];
   };
 
+  // Detect structured categoriasDatos: { titular, codigo, campos }[]  (new import format)
+  // vs. legacy: string[] (old import or manual entry)
+  const catDatos = activity.categoriasDatos;
+  const titulares: string[] = [];
+  const datosPersonalesDetalle: Record<string, Record<string, PersonalDataDomainSelection>> = {};
+  let legacyCategoriasDatos: string[] = [];
+
+  if (Array.isArray(catDatos) && catDatos.length > 0) {
+    const first = catDatos[0];
+    if (first !== null && typeof first === "object" && "codigo" in (first as object)) {
+      // New structured format from import
+      for (const item of catDatos as StructuredCategoriaDato[]) {
+        const domainId = CATEGORIA_CODE_TO_SHORT_ID[item.codigo];
+        const titularKey = item.titular || "";
+        if (!domainId || !titularKey) continue;
+
+        if (!titulares.includes(titularKey)) titulares.push(titularKey);
+
+        if (!datosPersonalesDetalle[titularKey]) datosPersonalesDetalle[titularKey] = {};
+        const existing = datosPersonalesDetalle[titularKey][domainId];
+        if (existing) {
+          for (const campo of item.campos) {
+            if (!existing.fields.includes(campo)) existing.fields.push(campo);
+          }
+        } else {
+          datosPersonalesDetalle[titularKey][domainId] = {
+            fields: [...item.campos],
+            justification: "",
+          };
+        }
+      }
+    } else {
+      // Legacy string[] format
+      legacyCategoriasDatos = toStringArray(catDatos);
+    }
+  }
+
   const values = {
     nombreTratamiento:
       mode === "duplicate" ? `${activity.nombre} · copia de trabajo` : activity.nombre,
     descripcion: activity.finalidad ?? "",
     finalidad: activity.finalidad ?? "",
     descripcionBaseLegal: activity.normaAplicable ?? "",
-    titulares: toStringArray(activity.categoriasTitulares),
-    categoriasDatos: toStringArray(activity.categoriasDatos),
+    titulares:
+      titulares.length > 0
+        ? titulares
+        : toStringArray(activity.categoriasTitulares),
+    categoriasDatos:
+      legacyCategoriasDatos.length > 0
+        ? legacyCategoriasDatos
+        : [],
+    datosPersonalesDetalle,
     procedenciaDatos: activity.origenDatos ?? "",
     accionesTratamiento: toStringArray(activity.accionesTratamiento),
     plazoRetencion: activity.plazoConservacion ?? "",
