@@ -12,7 +12,6 @@ import {
   getRoleCapabilities,
   type AppModuleKey,
 } from "../auth/permissions";
-import { getOrganizationUnits } from "../organization/organization-structure-data";
 
 type BackendRat = {
   id: number;
@@ -35,13 +34,17 @@ type BackendActivity = {
   requiereEipd: boolean;
 };
 
+type BackendDependencia = {
+  id: number;
+  nombre: string;
+  sigla: string | null;
+};
+
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
   const isOperator = roleCapabilities.role === "OPERADOR";
   const isTechnicalAdmin = roleCapabilities.role === "ADMIN_TECNICO";
-
-  const organizationUnits = useMemo(() => getOrganizationUnits(), []);
 
   const ratsQuery = useQuery({
     queryKey: ["dashboard", "rats"],
@@ -90,6 +93,17 @@ export function DashboardPage() {
     },
   });
 
+  const dependenciasQuery = useQuery({
+    queryKey: ["dashboard", "dependencias"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendDependencia[] }>("/dependencias", {
+        params: { activo: true },
+      });
+      return response.data.data;
+    },
+    staleTime: 60_000,
+  });
+
   const usersQuery = useQuery({
     queryKey: ["dashboard", "users"],
     enabled: isTechnicalAdmin,
@@ -112,16 +126,10 @@ export function DashboardPage() {
   const activities = activitiesStatsQuery.data ?? [];
 
   const scopedRats = useMemo(() => {
-    if (!isOperator) {
-      return rats;
-    }
-    if (!dependencyScope) {
-      return [];
-    }
-    return rats.filter((rat) =>
-      matchesDependency(rat.dependencia.nombre, dependencyScope),
-    );
-  }, [dependencyScope, isOperator, rats]);
+    if (!isOperator) return rats;
+    if (!user?.dependenciaId) return [];
+    return rats.filter((rat) => rat.dependencia.id === user.dependenciaId);
+  }, [isOperator, rats, user?.dependenciaId]);
 
   const scopedActivities = useMemo(() => {
     if (!isOperator) {
@@ -135,8 +143,8 @@ export function DashboardPage() {
     );
   }, [dependencyScope, isOperator, activities]);
 
-  const scopedRatDependencies = useMemo(
-    () => new Set(scopedRats.map((rat) => rat.dependencia.nombre).filter(Boolean)),
+  const scopedRatDependencyIds = useMemo(
+    () => new Set(scopedRats.map((rat) => rat.dependencia.id)),
     [scopedRats],
   );
 
@@ -157,20 +165,10 @@ export function DashboardPage() {
 
   const highRiskRats: BackendRat[] = [];
 
-  const scopedOrganizationUnits = useMemo(() => {
-    if (!isOperator) {
-      return organizationUnits;
-    }
-    if (!dependencyScope) {
-      return [];
-    }
-    return organizationUnits.filter((unit) =>
-      matchesDependency(unit.nombre, dependencyScope),
-    );
-  }, [dependencyScope, isOperator, organizationUnits]);
-
   const assets = activosQuery.data ?? [];
   const users = usersQuery.data ?? [];
+  const backendDependencias = dependenciasQuery.data ?? [];
+
   const criticalAssets = assets.filter(
     (item) => normalizeImpactKey(item) === "CATASTROFICO",
   );
@@ -179,11 +177,9 @@ export function DashboardPage() {
       .map((item) => item.dependencia)
       .filter((value): value is string => Boolean(value)),
   );
-  const activeDependenciesWithoutRat = scopedOrganizationUnits.filter(
-    (unit) =>
-      unit.status === "Activa" &&
-      !isSubdependency(unit.tipo) &&
-      !scopedRatDependencies.has(unit.nombre),
+  const activeDependenciesWithoutRat = useMemo(
+    () => backendDependencias.filter((dep) => !scopedRatDependencyIds.has(dep.id)),
+    [backendDependencias, scopedRatDependencyIds],
   );
 
   const dashboardScope = getDashboardScope(roleCapabilities.label, {
@@ -244,7 +240,7 @@ export function DashboardPage() {
         },
         {
           label: "Dependencias registradas",
-          value: organizationUnits.filter((unit) => !isSubdependency(unit.tipo)).length,
+          value: backendDependencias.length,
           context: "Estructura base",
           scope,
           icon: "organization" as const,
@@ -312,7 +308,7 @@ export function DashboardPage() {
     return [
       {
         label: "Dependencias con RAT",
-        value: scopedRatDependencies.size,
+        value: scopedRatDependencyIds.size,
         scope,
         icon: "organization" as const,
         tone: "neutral",
@@ -360,6 +356,7 @@ export function DashboardPage() {
   }, [
     activeDependenciesWithoutRat.length,
     assets.length,
+    backendDependencias.length,
     criticalAssetDependencies.size,
     criticalAssets.length,
     dashboardScope.kpiScope,
@@ -367,9 +364,8 @@ export function DashboardPage() {
     highRiskRats.length,
     isOperator,
     isTechnicalAdmin,
-    organizationUnits,
     scopedActivities.length,
-    scopedRatDependencies.size,
+    scopedRatDependencyIds.size,
     user?.role,
     users,
   ]);
@@ -491,7 +487,7 @@ export function DashboardPage() {
                     <article key={item.id} className="dashboard-list-item">
                       <div>
                         <strong>{item.nombre}</strong>
-                        <span>{item.tipo}</span>
+                        {item.sigla ? <span>{item.sigla}</span> : null}
                       </div>
                       <div className="dashboard-list-meta">
                         <span className="pill status-pill-borrador">Sin RAT</span>
@@ -733,10 +729,6 @@ function matchesDependency(
       normalizedValue.includes(candidate) ||
       candidate.includes(normalizedValue),
   );
-}
-
-function isSubdependency(tipo: string) {
-  return normalizeToken(tipo).includes("subdireccion");
 }
 
 type DashboardDependencia = {
