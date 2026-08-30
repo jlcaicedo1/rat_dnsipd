@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDatosPersonales } from "./useDatosPersonales";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ContextModal } from "../../components/ContextModal";
@@ -16,7 +16,6 @@ import {
   getCatalogNamesByType,
   type CatalogEntry,
 } from "../catalogs/catalogs-data";
-import { getOrganizationUnits } from "../organization/organization-structure-data";
 import {
   SearchableSelect,
   type SearchableSelectOption,
@@ -26,17 +25,7 @@ import {
   loadTreatmentDraft,
   type TreatmentDraftMode,
 } from "./treatment-draft-storage";
-import {
-  buildRegistryWorkspace,
-  upsertWorkspaceRatRecord,
-} from "./registry-workspace";
-import {
-  getRatRegistryRecords,
-  type ActivityRegistryRecord,
-  type RatRegistryRecord,
-  type RecordStatus,
-  type RiskLevel,
-} from "./rat-registry-data";
+import { type RecordStatus } from "./rat-registry-data";
 import {
   ACTION_OPTIONS,
   BASE_LEGAL_OPTIONS,
@@ -238,9 +227,6 @@ export function RatCreatePage() {
   const [form, setForm] = useState<RatDraftForm>(() =>
     draftPayload ? { ...INITIAL_FORM, ...coerceDraftValues(draftPayload.values) } : INITIAL_FORM,
   );
-  const activeOrganizationLookup = useMemo(() => buildActiveOrganizationLookup(), []);
-  const registryRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), []);
-
   const dependenciasQuery = useQuery({
     queryKey: ["dependencias", "rat-form"],
     queryFn: async () => {
@@ -292,15 +278,71 @@ export function RatCreatePage() {
     },
   });
 
-  const activeDependencias = (dependenciasQuery.data ?? []).filter((item) =>
-    isUnitAvailableForRegistration(item, activeOrganizationLookup),
+  const existingActivityCodesQuery = useQuery({
+    queryKey: ["actividades-codigos"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: Array<{ codigo: string }> }>("/actividades");
+      return response.data.data.map((a) => a.codigo);
+    },
+    staleTime: 30_000,
+    enabled: draftMode === "create" || draftMode === "duplicate",
+  });
+
+  const queryClient = useQueryClient();
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedDependencia) {
+        throw new Error("Seleccione una dependencia antes de guardar");
+      }
+      if ((draftMode === "edit") && sourceActivityId) {
+        await apiClient.patch(`/actividades/${sourceActivityId}`, {
+          nombre: form.nombreTratamiento.trim() || undefined,
+          descripcion: form.descripcion.trim() || undefined,
+        });
+        return;
+      }
+      const ratsResponse = await apiClient.get<{ data: Array<{ id: number }> }>("/rats", {
+        params: { dependenciaId: Number(form.dependenciaId) },
+      });
+      let ratId: number;
+      if (ratsResponse.data.data.length > 0) {
+        ratId = ratsResponse.data.data[0].id;
+      } else {
+        const ratResponse = await apiClient.post<{ data: { id: number } }>("/rats", {
+          codigo: generatedCode,
+          nombre: form.nombreTratamiento.trim() || generatedCode,
+          descripcion: form.descripcion.trim() || undefined,
+          dependenciaId: Number(form.dependenciaId),
+          ...(form.subdireccionId ? { subdireccionId: Number(form.subdireccionId) } : {}),
+        });
+        ratId = ratResponse.data.data.id;
+      }
+      const existingCodes = existingActivityCodesQuery.data ?? [];
+      const activityCode = buildActivityCode(selectedDependencia.sigla ?? "", existingCodes);
+      await apiClient.post(`/rats/${ratId}/actividades`, {
+        codigo: activityCode,
+        nombre: form.nombreTratamiento.trim() || activityCode,
+        descripcion: form.finalidad.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["actividades-backend"] });
+      void queryClient.invalidateQueries({ queryKey: ["rats", "list"] });
+      void queryClient.invalidateQueries({ queryKey: ["actividades-codigos"] });
+      clearTreatmentDraft();
+      navigate("/actividades");
+    },
+  });
+
+  const activeDependencias = (dependenciasQuery.data ?? []).filter(
+    (item) => item.activo !== false,
   );
   const assignedDependencyScope = getAssignedDependencyScope(user, activeDependencias);
   const dependencias = restrictToAssignedDependency
     ? activeDependencias.filter((item) => item.id === user?.dependenciaId)
     : activeDependencias;
-  const subdirecciones = (subdireccionesQuery.data ?? []).filter((item) =>
-    isUnitAvailableForRegistration(item, activeOrganizationLookup),
+  const subdirecciones = (subdireccionesQuery.data ?? []).filter(
+    (item) => item.activo !== false,
   );
   const selectedDependencia =
     dependencias.find((item) => String(item.id) === form.dependenciaId) ?? null;
@@ -416,16 +458,7 @@ export function RatCreatePage() {
     form.accesoTransferencia === "SI" && form.paisTercero !== "Ecuador";
   const eipdRecommended =
     hasSpecialCategories || isLargeScale || hasInternationalTransfer;
-  const sourceRat =
-    draftPayload
-      ? registryRecords.find((rat) =>
-          rat.activities.some((activity) => activity.id === draftPayload.activityId),
-        ) ?? null
-      : null;
-  const sourceActivity =
-    draftPayload
-      ? sourceRat?.activities.find((activity) => activity.id === draftPayload.activityId) ?? null
-      : null;
+  const sourceActivityId: number | null = draftPayload?.activityId ?? null;
 
   const summaryItems = [
     { label: "Codigo", value: generatedCode },
@@ -607,25 +640,7 @@ export function RatCreatePage() {
   }
 
   function handleSaveDraft() {
-    const savedRecord = buildRatRecordFromForm({
-      form,
-      mode: draftMode,
-      progress,
-      generatedCode,
-      selectedDependencia,
-      selectedSubdireccion,
-      selectedElectronicAsset,
-      eipdRecommended,
-      sourceRat,
-      sourceActivity,
-      actorName: user?.nombre?.trim() || user?.username?.trim() || "Responsable del levantamiento",
-      registryRecords,
-      domains: pdDomains,
-    });
-
-    upsertWorkspaceRatRecord(savedRecord);
-    clearTreatmentDraft();
-    navigate("/actividades");
+    saveMutation.mutate();
   }
 
   function handleToggleTitular(value: string) {
@@ -2091,28 +2106,6 @@ function buildSensitivePersonalDataSummary(
   return values.size > 0 ? formatListValue([...values]) : form.descripcionDatos.trim();
 }
 
-function buildPersonalDataRecords(
-  form: RatDraftForm,
-  domains: PersonalDataDomain[] = PERSONAL_DATA_DOMAINS,
-) {
-  return form.titulares.flatMap((titular) => {
-    const detail = form.datosPersonalesDetalle[titular] ?? {};
-
-    return Object.entries(detail)
-      .filter(([, selection]) => selection.fields.length > 0 || selection.justification.trim().length > 0)
-      .map(([domainId, selection]) => {
-        const domain = domains.find((item) => item.id === domainId);
-
-        return {
-          titular,
-          categoria: domain?.name ?? domainId,
-          campos: selection.fields,
-          justificacion: selection.justification.trim(),
-          sensible: Boolean(domain?.sensitive),
-        };
-      });
-  });
-}
 
 function buildRatCode(sigla: string | null) {
   const year = new Date().getFullYear();
@@ -2200,24 +2193,6 @@ function formatOrgLabel(nombre: string, sigla?: string | null) {
   return `${nombre} (${sigla.trim().toUpperCase()})`;
 }
 
-function buildActiveOrganizationLookup() {
-  const values = new Set<string>();
-
-  for (const unit of getOrganizationUnits()) {
-    if (unit.status !== "Activa") {
-      continue;
-    }
-
-    values.add(normalizeOrgKey(unit.nombre));
-
-    if (unit.sigla?.trim()) {
-      values.add(normalizeOrgKey(unit.sigla));
-    }
-  }
-
-  return values;
-}
-
 function isUnitAvailableForRegistration(
   unit: { nombre: string; sigla?: string | null; activo?: boolean | null },
   activeOrganizationLookup: Set<string>,
@@ -2303,197 +2278,13 @@ function normalizeStatusToken(value: RecordStatus) {
     .toLowerCase();
 }
 
-function buildRatRecordFromForm({
-  form,
-  mode,
-  progress,
-  generatedCode,
-  selectedDependencia,
-  selectedSubdireccion,
-  selectedElectronicAsset,
-  eipdRecommended,
-  sourceRat,
-  sourceActivity,
-  actorName,
-  registryRecords,
-  domains,
-}: {
-  form: RatDraftForm;
-  mode: "create" | TreatmentDraftMode;
-  progress: number;
-  generatedCode: string;
-  selectedDependencia: Dependencia | null;
-  selectedSubdireccion: Subdireccion | null;
-  selectedElectronicAsset: ActivoSummary | null;
-  eipdRecommended: boolean;
-  sourceRat: RatRegistryRecord | null;
-  sourceActivity: ActivityRegistryRecord | null;
-  actorName: string;
-  registryRecords: RatRegistryRecord[];
-  domains?: PersonalDataDomain[];
-}): RatRegistryRecord {
-  const _domains = domains ?? PERSONAL_DATA_DOMAINS;
-  const today = new Date().toISOString().slice(0, 10);
-  const nextStatus = getDraftLifecycleStatus(progress);
-  const dependencyName = selectedDependencia?.nombre ?? "Dependencia pendiente";
-  const dependencySigla = selectedDependencia?.sigla?.trim().toUpperCase() ?? "PENDIENTE";
-  const ratId = mode === "edit" && sourceRat ? sourceRat.id : Date.now();
-  const activityId = mode === "edit" && sourceActivity ? sourceActivity.id : ratId + 1;
-  const activityCode =
-    mode === "edit" && sourceActivity
-      ? sourceActivity.codigo
-      : buildActivityCode(dependencySigla, registryRecords);
-  const ratCode =
-    selectedDependencia?.sigla?.trim() || mode !== "edit" ? generatedCode : sourceRat?.codigo ?? generatedCode;
-  const ratName = form.nombreTratamiento.trim() || sourceRat?.nombre || "Tratamiento sin nombre";
-  const executiveSummary = form.descripcion.trim() || form.finalidad.trim() || ratName;
-  const riskLevel = deriveRiskLevel(form, eipdRecommended);
-  const externalTransfer =
-    form.accesoTransferencia === "SI" && form.paisTercero && form.paisTercero !== "Ecuador";
-  const activityVersion =
-    mode === "edit" && sourceActivity ? sourceActivity.version : "1.0";
-  const activityReport = {
-    codigoRat: ratCode,
-    nombreTratamiento: form.nombreTratamiento.trim() || ratName,
-    dependenciaResponsable: dependencyName,
-    procesoRelacionado: selectedDependencia?.tipoProceso?.nombre ?? "Pendiente",
-    subproceso: selectedSubdireccion?.nombre ?? "Pendiente",
-    estado: nextStatus,
-    nivelRiesgo: riskLevel,
-    requiereEipd: eipdRecommended,
-    fechaCreacion: form.fechaLevantamiento || today,
-    ultimaActualizacion: today,
-    finalidadEspecifica: form.finalidad.trim() || "Pendiente de documentar.",
-    baseLicitud: form.baseLegal || "Pendiente de documentar",
-    normaAplicable: form.descripcionBaseLegal.trim() || "Pendiente de documentar",
-    titulares: formatListValue(form.titulares),
-    categoriasDatos: formatListValue(getSelectedPersonalDataCategoryNames(form, _domains)),
-    datosSensibles:
-      buildSensitivePersonalDataSummary(form, _domains) || "No se identifican datos sensibles",
-    datosNna: hasChildPersonalData(form, _domains) ? "Si" : "No",
-    origenDatos: form.procedenciaDatos || "Pendiente de documentar",
-    mediosRecoleccion: "Pendiente de documentar",
-    accionesTratamiento: formatListValue(form.accionesTratamiento),
-    plazoConservacion: form.plazoRetencion.trim() || "Pendiente de documentar",
-    criteriosConservacion:
-      form.permanenciaTratamiento || "Pendiente de documentar",
-    supresionAnonimizacion:
-      form.permanenciaTratamiento || "Pendiente de documentar",
-    destinatariosInternos: "Pendiente de documentar",
-    destinatariosExternos:
-      form.accesoTransferencia === "SI"
-        ? formatListValue([form.nombreTercero, form.categoriaTercero])
-        : "No aplica",
-    transferenciasInternacionales: externalTransfer ? "Si" : "No",
-    paisDestino: externalTransfer ? form.paisTercero : "N/A",
-    mecanismoTransferencia:
-      externalTransfer && form.baseLegalTransferencia.trim().length > 0
-        ? form.baseLegalTransferencia.trim()
-        : "N/A",
-    medidasSeguridad: form.medidasSeguridad.trim() || "Pendiente de documentar",
-  } satisfies ActivityRegistryRecord["report"];
-
-  const activity: ActivityRegistryRecord = {
-    id: activityId,
-    ratId,
-    codigo: activityCode,
-    nombre: form.nombreTratamiento.trim() || "Tratamiento sin nombre",
-    ratCodigo: ratCode,
-    ratNombre: ratName,
-    dependencia: dependencyName,
-    unidadEjecutora: selectedSubdireccion?.nombre ?? "Pendiente",
-    estado: nextStatus,
-    riesgo: riskLevel,
-    requiereEipd: eipdRecommended,
-    version: activityVersion,
-    fechaActualizacion: today,
-    responsables: [dependencySigla, selectedSubdireccion?.nombre ?? "Pendiente"],
-    observaciones: buildObservations(form, selectedElectronicAsset),
-    pendientes: buildPendingItems(form, nextStatus, eipdRecommended),
-    report: activityReport,
-    datosPersonalesDetalle: buildPersonalDataRecords(form, _domains),
-  };
-
-  return {
-    id: ratId,
-    codigo: ratCode,
-    nombre: ratName,
-    dependencia: dependencyName,
-    unidadResponsable: dependencySigla,
-    estado: nextStatus,
-    riesgo: riskLevel,
-    requiereEipd: eipdRecommended,
-    totalActividades: 1,
-    fechaActualizacion: today,
-    responsableLevantamiento: actorName,
-    responsableTratamiento: dependencyName,
-    resumen: executiveSummary,
-    activities: [activity],
-  };
-}
-
-function buildActivityCode(sigla: string, registryRecords: RatRegistryRecord[]) {
+function buildActivityCode(sigla: string, existingCodes: string[]) {
   const normalizedSigla = sigla.trim().toUpperCase() || "PENDIENTE";
   const prefix = `ACT-${normalizedSigla}-`;
-  const usedCodes = registryRecords.flatMap((rat) => rat.activities.map((activity) => activity.codigo));
-  const nextIndex =
-    usedCodes.filter((code) => code.startsWith(prefix)).length + 1;
-
+  const nextIndex = existingCodes.filter((code) => code.startsWith(prefix)).length + 1;
   return `${prefix}${String(nextIndex).padStart(3, "0")}`;
-}
-
-function deriveRiskLevel(form: RatDraftForm, eipdRecommended: boolean): RiskLevel {
-  if (eipdRecommended) {
-    return "Alto";
-  }
-
-  if (form.observacionRiesgo.trim().length > 0 || form.accesoTransferencia === "SI") {
-    return "Medio";
-  }
-
-  return "Bajo";
 }
 
 function formatListValue(values: string[]) {
   return values.filter(Boolean).join(", ") || "Pendiente de documentar";
-}
-
-function buildObservations(form: RatDraftForm, selectedElectronicAsset: ActivoSummary | null) {
-  const notes: string[] = [];
-
-  if (selectedElectronicAsset?.impacto) {
-    notes.push(`Activo vinculado con impacto ${selectedElectronicAsset.impacto}.`);
-  }
-
-  if (form.baseDatos.trim()) {
-    notes.push(`Repositorio asociado: ${form.baseDatos.trim()}.`);
-  }
-
-  if (form.observacionRiesgo.trim()) {
-    notes.push(form.observacionRiesgo.trim());
-  }
-
-  return notes.length > 0 ? notes : ["Sin observaciones registradas en esta version."];
-}
-
-function buildPendingItems(
-  form: RatDraftForm,
-  nextStatus: RecordStatus,
-  eipdRecommended: boolean,
-) {
-  const pending: string[] = [];
-
-  if (nextStatus === "Borrador") {
-    pending.push("Completar los campos obligatorios pendientes antes de enviar a revision.");
-  }
-
-  if (eipdRecommended) {
-    pending.push("Revisar MTGE y EIPD antes de publicar el tratamiento.");
-  }
-
-  if (!form.baseDatos.trim()) {
-    pending.push("Confirmar el repositorio o base de datos principal del tratamiento.");
-  }
-
-  return pending.length > 0 ? pending : ["Sin pendientes registrados."];
 }

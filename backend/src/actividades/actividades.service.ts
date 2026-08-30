@@ -50,7 +50,7 @@ export class ActividadesService {
 
     const actividades = await this.prisma.actividadTratamiento.findMany({
       where,
-      orderBy: [{ nombre: 'asc' }],
+      orderBy: [{ codigo: 'asc' }],
       include: {
         rat: {
           include: {

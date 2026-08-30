@@ -1,16 +1,12 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppIcon } from "../../components/AppIcon";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { apiClient } from "../../services/api-client";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
-import {
-  getActivityRegistryRecords,
-  getRatRegistryRecords,
-  type ActivityRegistryRecord,
-  type RatRegistryRecord,
-} from "../rat/rat-registry-data";
 import {
   getOrganizationUnits,
   saveOrganizationUnits,
@@ -20,6 +16,18 @@ import {
 } from "./organization-structure-data";
 
 type PendingOrgUnitChange = Partial<Pick<OrgUnit, "nombre" | "sigla" | "ownerRole" | "status">>;
+
+type BackendRat = {
+  id: number;
+  codigo: string;
+  dependencia: { id: number; nombre: string; sigla: string | null };
+};
+
+type BackendActivity = {
+  id: number;
+  dependencia: string;
+  subdireccion: string | null;
+};
 
 export function OrganizationStructurePage() {
   const [searchParams] = useSearchParams();
@@ -50,8 +58,24 @@ export function OrganizationStructurePage() {
   );
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
 
-  const ratRecords = getRatRegistryRecords();
-  const activityRecords = getActivityRegistryRecords();
+  const ratsQuery = useQuery({
+    queryKey: ["rats", "list"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendRat[] }>("/rats");
+      return response.data.data;
+    },
+    staleTime: 60_000,
+  });
+  const activitiesQuery = useQuery({
+    queryKey: ["actividades-backend"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendActivity[] }>("/actividades");
+      return response.data.data;
+    },
+    staleTime: 60_000,
+  });
+  const ratRecords = ratsQuery.data ?? [];
+  const activityRecords = activitiesQuery.data ?? [];
 
   const unitsById = useMemo(
     () => Object.fromEntries(units.map((unit) => [unit.id, unit])),
@@ -457,13 +481,13 @@ function OrgUnitManagementModal({
   unit,
   unitsById,
 }: {
-  activityRecords: ActivityRegistryRecord[];
+  activityRecords: BackendActivity[];
   children: OrgUnit[];
   onApplyChanges: (unitId: string, changes: PendingOrgUnitChange) => void;
   onClose: () => void;
   onResetChanges: (unitId: string) => void;
   pendingChange?: PendingOrgUnitChange;
-  ratRecords: RatRegistryRecord[];
+  ratRecords: BackendRat[];
   roleCanEdit: boolean;
   unit: OrgUnit;
   unitsById: Record<string, OrgUnit>;
@@ -690,19 +714,19 @@ function getHierarchyLabel(unit: OrgUnit, unitsById: Record<string, OrgUnit>) {
   return chain.join(" / ");
 }
 
-function countLinkedRats(unit: OrgUnit, ratRecords: RatRegistryRecord[]) {
+function countLinkedRats(unit: OrgUnit, ratRecords: BackendRat[]) {
   return ratRecords.filter(
-    (rat) => rat.dependencia === unit.nombre || rat.unidadResponsable === unit.sigla,
+    (rat) =>
+      rat.dependencia.nombre === unit.nombre ||
+      (unit.sigla && rat.dependencia.sigla === unit.sigla),
   ).length;
 }
 
-function countLinkedActivities(unit: OrgUnit, activityRecords: ActivityRegistryRecord[]) {
+function countLinkedActivities(unit: OrgUnit, activityRecords: BackendActivity[]) {
   return activityRecords.filter(
     (activity) =>
       activity.dependencia === unit.nombre ||
-      activity.unidadEjecutora === unit.nombre ||
-      activity.responsables.includes(unit.nombre) ||
-      Boolean(unit.sigla && activity.responsables.includes(unit.sigla)),
+      activity.subdireccion === unit.nombre,
   ).length;
 }
 

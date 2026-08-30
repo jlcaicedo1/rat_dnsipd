@@ -35,7 +35,10 @@ import {
   buildReportDocument,
   printReportDocument,
 } from "../rat/TreatmentReportPreview";
-import { seedTreatmentDraftFromActivity } from "../rat/treatment-draft-storage";
+import {
+  seedTreatmentDraftFromActivity,
+  seedTreatmentDraftFromBackendActivity,
+} from "../rat/treatment-draft-storage";
 import { ActivityMapModal } from "./ActivityMapModal";
 import { ArchiveConfirmModal } from "./ArchiveConfirmModal";
 import { ConfirmWithMotivoModal } from "../../components/ConfirmWithMotivoModal";
@@ -126,12 +129,15 @@ export function ActivitiesPage() {
     [actividadesBackendQuery.data],
   );
   const mergedActivityRecords = useMemo(() => {
+    if (actividadesBackendQuery.isSuccess) {
+      return backendActivities;
+    }
     const backendCodigos = new Set(backendActivities.map((a) => a.codigo));
     const localOnly = activityRecords.filter(
       (a) => !backendCodigos.has(a.codigo) && !backendArchivedCodigos.has(a.codigo),
     );
     return [...backendActivities, ...localOnly];
-  }, [backendActivities, backendArchivedCodigos, activityRecords]);
+  }, [actividadesBackendQuery.isSuccess, backendActivities, backendArchivedCodigos, activityRecords]);
   const assignedDependencyScope = getAssignedDependencyScope(
     user,
     dependenciasQuery.data ?? [],
@@ -394,8 +400,12 @@ export function ActivitiesPage() {
     ];
   }, [scopedActivityRecords]);
 
-  function handlePrepareTreatment(activity: ActivityRegistryRecord, mode: "edit" | "duplicate") {
-    seedTreatmentDraftFromActivity(activity, mode);
+  function handlePrepareTreatment(activity: BackendActivity | ActivityRegistryRecord, mode: "edit" | "duplicate") {
+    if ("report" in activity) {
+      seedTreatmentDraftFromActivity(activity, mode);
+    } else {
+      seedTreatmentDraftFromBackendActivity(activity, mode);
+    }
     navigate(`/actividades/nuevo?mode=${mode}&source=${activity.id}`);
   }
 
@@ -534,7 +544,7 @@ export function ActivitiesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredActivities.map((activity) => {
+                {[...filteredActivities].sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: "base" })).map((activity) => {
                   const isSelected = activeActivity?.id === activity.id;
 
                   return (

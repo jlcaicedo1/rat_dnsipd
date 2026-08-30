@@ -16,15 +16,35 @@ import {
 } from "../auth/dependency-scope";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
-import { buildRegistryWorkspace } from "../rat/registry-workspace";
-import {
-  getActivityTraceability,
-  getRatRegistryRecords,
-  type ActivityRegistryRecord,
-} from "../rat/rat-registry-data";
 
 type DependenciasResponse = {
   data: DependencyScopeEntity[];
+};
+
+type BackendActivity = {
+  id: number;
+  ratId: number;
+  codigo: string;
+  nombre: string;
+  ratCodigo: string;
+  dependencia: string;
+  dependenciaSigla: string | null;
+  subdireccion: string | null;
+  macroproceso: string | null;
+  proceso: string | null;
+  estadoGeneral: string;
+  estadoVersionActual: string | null;
+  versionActualId: number | null;
+  finalidad: string | null;
+  baseLicitud: string | null;
+  normaAplicable: string | null;
+  categoriasDatos: unknown;
+  categoriasTitulares: string | null;
+  origenDatos: string | null;
+  medidaSeguridad: string | null;
+  usaPerfilamiento: boolean;
+  requiereEipd: boolean;
+  fechaLevantamiento: string | null;
 };
 
 type EipdEvaluationStatus =
@@ -51,47 +71,22 @@ type EipdCaseRecord = {
   actividadNombre: string;
   dependencia: string;
   dependenciaEjecutora: string;
-  estadoActividad: ActivityRegistryRecord["estado"];
+  estadoActividad: string;
   estadoEipd: EipdEvaluationStatus;
-  riesgo: ActivityRegistryRecord["riesgo"];
   requiereConsultaPrevia: boolean;
   conclusion: string;
   fechaProximaRevision: string;
   ultimaActualizacion: string;
-  report: ActivityRegistryRecord["report"];
+  finalidad: string;
+  baseLicitud: string;
+  proceso: string;
+  medidasSeguridad: string;
   criterios: Array<{ label: string; applies: boolean }>;
   riesgosTitulares: string[];
   medidasMitigacion: string[];
 };
 
 const EIPD_WORKSPACE_STORAGE_KEY = "rat_dnsipd_eipd_workspace";
-
-const DEFAULT_EIPD_CASES: Record<number, EipdWorkspaceRecord> = {
-  201: {
-    estado: "En elaboracion",
-    requiereConsultaPrevia: false,
-    conclusion:
-      "La actividad trata datos de salud y requiere documentar necesidad, proporcionalidad y medidas reforzadas antes de su cierre.",
-    fechaProximaRevision: "2026-05-20",
-    ultimaActualizacion: "2026-04-23",
-  },
-  202: {
-    estado: "En revision DPD",
-    requiereConsultaPrevia: false,
-    conclusion:
-      "La reutilizacion analitica de datos de salud exige validar minimizacion, seudonimizacion y gobierno del uso secundario.",
-    fechaProximaRevision: "2026-05-18",
-    ultimaActualizacion: "2026-04-24",
-  },
-  501: {
-    estado: "Consulta previa",
-    requiereConsultaPrevia: true,
-    conclusion:
-      "El expediente juridico incluye datos sensibles y anexos probatorios que justifican criterio reforzado y consulta previa antes de su vigencia.",
-    fechaProximaRevision: "2026-05-12",
-    ultimaActualizacion: "2026-04-25",
-  },
-};
 
 export function EipdPage() {
   const user = useAuthStore((state) => state.user);
@@ -122,14 +117,15 @@ export function EipdPage() {
     },
   });
 
-  const ratRecords = useMemo(
-    () => buildRegistryWorkspace(getRatRegistryRecords()),
-    [workspaceVersion],
-  );
-  const activityRecords = useMemo(
-    () => ratRecords.flatMap((rat) => rat.activities),
-    [ratRecords],
-  );
+  const activitiesQuery = useQuery({
+    queryKey: ["actividades-backend"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendActivity[]; archivedCodigos: string[] }>("/actividades");
+      return response.data.data;
+    },
+    staleTime: 30_000,
+  });
+  const backendActivities = activitiesQuery.data ?? [];
   const assignedDependencyScope = getAssignedDependencyScope(
     user,
     dependenciasQuery.data ?? [],
@@ -137,18 +133,18 @@ export function EipdPage() {
   const scopedActivityRecords = useMemo(
     () =>
       restrictToAssignedDependency
-        ? activityRecords.filter((activity) =>
+        ? backendActivities.filter((activity) =>
             matchesAssignedDependencyScope(activity, assignedDependencyScope),
           )
-        : activityRecords,
-    [activityRecords, assignedDependencyScope, restrictToAssignedDependency],
+        : backendActivities,
+    [backendActivities, assignedDependencyScope, restrictToAssignedDependency],
   );
 
   const eipdCases = useMemo(
     () =>
       scopedActivityRecords
         .filter((activity) => activity.requiereEipd)
-        .map((activity) => buildEipdCaseRecord(activity))
+        .map((activity) => buildEipdCaseFromBackend(activity))
         .sort((left, right) =>
           right.ultimaActualizacion.localeCompare(left.ultimaActualizacion),
         ),
@@ -423,7 +419,6 @@ export function EipdPage() {
                   <th>Actividad</th>
                   <th>Dependencia</th>
                   <th>Estado EIPD</th>
-                  <th>Riesgo</th>
                   <th>Consulta previa</th>
                   <th>Ultima actualizacion</th>
                 </tr>
@@ -468,11 +463,6 @@ export function EipdPage() {
                         )}`}
                       >
                         {item.estadoEipd}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>
-                        {item.riesgo}
                       </span>
                     </td>
                     <td>
@@ -560,7 +550,7 @@ export function EipdPage() {
                     </div>
                     <div>
                       <dt>Proceso</dt>
-                      <dd>{activeCase.report.procesoRelacionado}</dd>
+                      <dd>{activeCase.proceso}</dd>
                     </div>
                     <div>
                       <dt>Estado del tratamiento</dt>
@@ -576,11 +566,11 @@ export function EipdPage() {
                     </div>
                     <div className="detail-span">
                       <dt>Finalidad</dt>
-                      <dd>{activeCase.report.finalidadEspecifica}</dd>
+                      <dd>{activeCase.finalidad}</dd>
                     </div>
                     <div className="detail-span">
                       <dt>Base de licitud</dt>
-                      <dd>{activeCase.report.baseLicitud}</dd>
+                      <dd>{activeCase.baseLicitud}</dd>
                     </div>
                   </dl>
                 </div>
@@ -758,18 +748,24 @@ const EIPD_STATUS_OPTIONS: EipdEvaluationStatus[] = [
   "Vigente",
 ];
 
-function buildEipdCaseRecord(activity: ActivityRegistryRecord): EipdCaseRecord {
-  const traceability = getActivityTraceability(activity.id);
+function mapEstadoDisplay(raw: string): string {
+  const s = raw.toUpperCase();
+  if (s === "VIGENTE") return "Vigente";
+  if (s === "EN_REVISION") return "En revision";
+  if (s === "ARCHIVADO") return "Archivado";
+  return "Borrador";
+}
+
+function buildEipdCaseFromBackend(activity: BackendActivity): EipdCaseRecord {
   const workspaceRecord = readEipdWorkspaceRecord(activity.id);
-  const sensitiveData = startsWithYes(activity.report.datosSensibles);
-  const childrenData = !startsWithNo(activity.report.datosNna);
-  const internationalTransfer =
-    normalize(activity.report.transferenciasInternacionales) === "si";
-  const highRisk = activity.riesgo === "Alto";
-  const largeScaleOrSensitive =
-    sensitiveData ||
-    normalize(activity.report.categoriasDatos).includes("salud") ||
-    normalize(activity.report.categoriasDatos).includes("biometric");
+  const categoriasDatosStr = Array.isArray(activity.categoriasDatos)
+    ? (activity.categoriasDatos as string[]).join(", ")
+    : String(activity.categoriasDatos ?? "");
+  const sensitiveData =
+    normalize(categoriasDatosStr).includes("salud") ||
+    normalize(categoriasDatosStr).includes("biometric") ||
+    normalize(categoriasDatosStr).includes("origen") ||
+    normalize(categoriasDatosStr).includes("religion");
 
   return {
     activityId: activity.id,
@@ -778,63 +774,40 @@ function buildEipdCaseRecord(activity: ActivityRegistryRecord): EipdCaseRecord {
     actividadCodigo: activity.codigo,
     actividadNombre: activity.nombre,
     dependencia: activity.dependencia,
-    dependenciaEjecutora: activity.unidadEjecutora,
-    estadoActividad: activity.estado,
+    dependenciaEjecutora: activity.subdireccion ?? activity.dependencia,
+    estadoActividad: mapEstadoDisplay(activity.estadoVersionActual ?? activity.estadoGeneral),
     estadoEipd: workspaceRecord.estado,
-    riesgo: activity.riesgo,
     requiereConsultaPrevia: workspaceRecord.requiereConsultaPrevia,
     conclusion: workspaceRecord.conclusion,
     fechaProximaRevision: workspaceRecord.fechaProximaRevision,
     ultimaActualizacion: workspaceRecord.ultimaActualizacion,
-    report: activity.report,
+    finalidad: activity.finalidad ?? "Pendiente de documentar",
+    baseLicitud: activity.baseLicitud ?? "Pendiente de registrar",
+    proceso: [activity.macroproceso, activity.proceso].filter(Boolean).join(" / ") || "No especificado",
+    medidasSeguridad: activity.medidaSeguridad ?? "Pendiente de registrar",
     criterios: [
-      { label: "Alto riesgo identificado", applies: highRisk },
-      {
-        label: "Categorias especiales de datos",
-        applies: sensitiveData,
-      },
-      {
-        label: "Datos de niñas, niños o adolescentes",
-        applies: childrenData,
-      },
-      {
-        label: "Transferencia internacional",
-        applies: internationalTransfer,
-      },
-      {
-        label: "Tratamiento sensible o de alta escala",
-        applies: largeScaleOrSensitive,
-      },
+      { label: "Categorias especiales de datos", applies: sensitiveData },
+      { label: "Perfilamiento de titulares", applies: activity.usaPerfilamiento },
     ],
-    riesgosTitulares:
-      traceability?.riesgosRelacionados.map(
-        (item) => `${item.nombre}. ${item.impacto}`,
-      ) ?? [activity.report.datosSensibles],
-    medidasMitigacion:
-      traceability?.controlesClave.length
-        ? [
-            ...traceability.controlesClave,
-            ...traceability.accionesContencion.slice(0, 2),
-          ]
-        : [activity.report.medidasSeguridad],
+    riesgosTitulares: activity.medidaSeguridad
+      ? [activity.medidaSeguridad]
+      : ["Pendiente de documentar"],
+    medidasMitigacion: activity.medidaSeguridad
+      ? [activity.medidaSeguridad]
+      : ["Pendiente de documentar"],
   };
 }
 
 function readEipdWorkspaceRecord(activityId: number): EipdWorkspaceRecord {
   const stored = readEipdWorkspaceState()[activityId];
-  const fallback = DEFAULT_EIPD_CASES[activityId] ?? {
-    estado: "Pre-evaluacion" as EipdEvaluationStatus,
+  const fallback: EipdWorkspaceRecord = {
+    estado: "Pre-evaluacion",
     requiereConsultaPrevia: false,
-    conclusion:
-      "Pendiente de consolidar necesidad, proporcionalidad y medidas de mitigacion.",
+    conclusion: "Pendiente de consolidar necesidad, proporcionalidad y medidas de mitigacion.",
     fechaProximaRevision: "",
-    ultimaActualizacion: "2026-04-20",
+    ultimaActualizacion: "",
   };
-
-  return {
-    ...fallback,
-    ...stored,
-  };
+  return { ...fallback, ...stored };
 }
 
 function readEipdWorkspaceState(): Record<number, Partial<EipdWorkspaceRecord>> {
@@ -902,10 +875,3 @@ function normalizeToken(value: string) {
   return normalize(value).replace(/\s+/g, "-");
 }
 
-function startsWithYes(value: string) {
-  return normalize(value).startsWith("si");
-}
-
-function startsWithNo(value: string) {
-  return normalize(value).startsWith("no");
-}

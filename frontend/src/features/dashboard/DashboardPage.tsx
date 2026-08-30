@@ -13,8 +13,27 @@ import {
   type AppModuleKey,
 } from "../auth/permissions";
 import { getOrganizationUnits } from "../organization/organization-structure-data";
-import { getRatRegistryRecords } from "../rat/rat-registry-data";
-import { buildRegistryWorkspace } from "../rat/registry-workspace";
+
+type BackendRat = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  estadoGeneral: string;
+  dependencia: { id: number; nombre: string; sigla: string | null };
+  subdireccion: { id: number; nombre: string } | null;
+  versionActual: string | null;
+  estadoVersionActual: string | null;
+  totalActividades: number;
+};
+
+type BackendActivity = {
+  id: number;
+  ratId: number;
+  nombre: string;
+  dependencia: string;
+  requiereEipd: boolean;
+};
 
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
@@ -22,11 +41,29 @@ export function DashboardPage() {
   const isOperator = roleCapabilities.role === "OPERADOR";
   const isTechnicalAdmin = roleCapabilities.role === "ADMIN_TECNICO";
 
-  const ratRecords = useMemo(
-    () => buildRegistryWorkspace(getRatRegistryRecords()),
-    [],
-  );
   const organizationUnits = useMemo(() => getOrganizationUnits(), []);
+
+  const ratsQuery = useQuery({
+    queryKey: ["dashboard", "rats"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendRat[] }>("/rats");
+      return response.data.data;
+    },
+  });
+
+  const activitiesStatsQuery = useQuery({
+    queryKey: ["dashboard", "activities-stats"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: Array<{ id: number; ratId: number; nombre: string; dependencia: string; requiereEipd: boolean }>; archivedCodigos: string[] }>("/actividades");
+      return response.data.data.map((item) => ({
+        id: item.id,
+        ratId: item.ratId,
+        nombre: item.nombre,
+        requiereEipd: item.requiereEipd,
+        dependencia: item.dependencia,
+      }));
+    },
+  });
 
   const dependenciaQuery = useQuery({
     queryKey: ["dashboard", "dependencia", user?.dependenciaId],
@@ -70,44 +107,67 @@ export function DashboardPage() {
   const canOpenAudit = canAccessModule(user?.role, "audit");
 
   const dependencyScope = dependenciaQuery.data ?? null;
-  const scopedRatRecords = useMemo(() => {
-    if (!isOperator) {
-      return ratRecords;
-    }
 
+  const rats = ratsQuery.data ?? [];
+  const activities = activitiesStatsQuery.data ?? [];
+
+  const scopedRats = useMemo(() => {
+    if (!isOperator) {
+      return rats;
+    }
     if (!dependencyScope) {
       return [];
     }
-
-    return ratRecords.filter((rat) =>
-      matchesDependency(rat.dependencia, dependencyScope),
+    return rats.filter((rat) =>
+      matchesDependency(rat.dependencia.nombre, dependencyScope),
     );
-  }, [dependencyScope, isOperator, ratRecords]);
+  }, [dependencyScope, isOperator, rats]);
+
+  const scopedActivities = useMemo(() => {
+    if (!isOperator) {
+      return activities;
+    }
+    if (!dependencyScope) {
+      return [];
+    }
+    return activities.filter((act) =>
+      matchesDependency(act.dependencia, dependencyScope),
+    );
+  }, [dependencyScope, isOperator, activities]);
+
+  const scopedRatDependencies = useMemo(
+    () => new Set(scopedRats.map((rat) => rat.dependencia.nombre).filter(Boolean)),
+    [scopedRats],
+  );
+
+  const eipdActivities = useMemo(
+    () => scopedActivities.filter((item) => item.requiereEipd),
+    [scopedActivities],
+  );
+
+  const eipdRatIds = useMemo(
+    () => new Set(eipdActivities.map((act) => act.ratId)),
+    [eipdActivities],
+  );
+
+  const eipdRats = useMemo(
+    () => scopedRats.filter((rat) => eipdRatIds.has(rat.id)),
+    [scopedRats, eipdRatIds],
+  );
+
+  const highRiskRats: BackendRat[] = [];
 
   const scopedOrganizationUnits = useMemo(() => {
     if (!isOperator) {
       return organizationUnits;
     }
-
     if (!dependencyScope) {
       return [];
     }
-
     return organizationUnits.filter((unit) =>
       matchesDependency(unit.nombre, dependencyScope),
     );
   }, [dependencyScope, isOperator, organizationUnits]);
-
-  const activityRecords = useMemo(
-    () => scopedRatRecords.flatMap((rat) => rat.activities),
-    [scopedRatRecords],
-  );
-  const scopedRatDependencies = new Set(
-    scopedRatRecords.map((rat) => rat.dependencia).filter(Boolean),
-  );
-  const eipdActivities = activityRecords.filter((item) => item.requiereEipd);
-  const eipdRats = scopedRatRecords.filter((item) => item.requiereEipd);
-  const highRiskRats = scopedRatRecords.filter((item) => item.riesgo === "Alto");
 
   const assets = activosQuery.data ?? [];
   const users = usersQuery.data ?? [];
@@ -198,7 +258,7 @@ export function DashboardPage() {
       return [
         {
           label: "Actividades dependencia",
-          value: scopedRatRecords.length,
+          value: scopedActivities.length,
           context: "Registros bajo su ambito",
           scope,
           icon: "activities" as const,
@@ -308,15 +368,13 @@ export function DashboardPage() {
     isOperator,
     isTechnicalAdmin,
     organizationUnits,
+    scopedActivities.length,
     scopedRatDependencies.size,
-    scopedRatRecords.length,
     user?.role,
     users,
   ]);
 
-  const priorityRecords = scopedRatRecords
-    .filter((item) => item.riesgo === "Alto" || item.requiereEipd)
-    .slice(0, 4);
+  const priorityRecords = eipdRats.slice(0, 4);
   const pendingDependencies = activeDependenciesWithoutRat.slice(0, 4);
   const technicalRoleCounts = users.reduce<Record<string, number>>((acc, item) => {
     const label = getRoleCapabilities(item.role).label;
@@ -401,18 +459,7 @@ export function DashboardPage() {
                       <span>{item.nombre}</span>
                     </div>
                     <div className="dashboard-list-meta">
-                      <span className={`pill risk-pill-${normalizeToken(item.riesgo)}`}>
-                        {item.riesgo}
-                      </span>
-                      <span
-                        className={
-                          item.requiereEipd
-                            ? "pill eipd-pill-yes"
-                            : "pill eipd-pill-no"
-                        }
-                      >
-                        {item.requiereEipd ? "EIPD Si" : "EIPD No"}
-                      </span>
+                      <span className="pill eipd-pill-yes">EIPD Si</span>
                     </div>
                   </article>
                 ))
@@ -757,7 +804,7 @@ function normalizeImpactKey(item: {
 function normalizeComparable(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -766,7 +813,7 @@ function normalizeComparable(value: string) {
 function normalizeToken(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, "-")
     .toLowerCase();
 }

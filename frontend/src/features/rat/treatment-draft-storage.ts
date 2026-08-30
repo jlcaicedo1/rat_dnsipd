@@ -1,5 +1,23 @@
 import type { ActivityRegistryRecord } from "./rat-registry-data";
 
+type BackendActivityForDraft = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  ratCodigo: string;
+  dependencia: string;
+  subdireccion: string | null;
+  finalidad: string | null;
+  normaAplicable: string | null;
+  categoriasTitulares: string | null;
+  categoriasDatos: unknown;
+  origenDatos: string | null;
+  accionesTratamiento: unknown;
+  plazoConservacion: string | null;
+  fechaLevantamiento: string | null;
+  medidaSeguridad: string | null;
+};
+
 export type TreatmentDraftMode = "edit" | "duplicate";
 
 type StoredTreatmentDraft = {
@@ -68,6 +86,47 @@ export function loadTreatmentDraft() {
     window.localStorage.removeItem(TREATMENT_DRAFT_STORAGE_KEY);
     return null;
   }
+}
+
+export function seedTreatmentDraftFromBackendActivity(
+  activity: BackendActivityForDraft,
+  mode: TreatmentDraftMode,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const toStringArray = (val: unknown): string[] => {
+    if (Array.isArray(val)) return (val as string[]).filter(Boolean);
+    if (typeof val === "string") return val.split(",").map((s) => s.trim()).filter(Boolean);
+    return [];
+  };
+
+  const values = {
+    nombreTratamiento:
+      mode === "duplicate" ? `${activity.nombre} · copia de trabajo` : activity.nombre,
+    descripcion: activity.finalidad ?? "",
+    finalidad: activity.finalidad ?? "",
+    descripcionBaseLegal: activity.normaAplicable ?? "",
+    titulares: toStringArray(activity.categoriasTitulares),
+    categoriasDatos: toStringArray(activity.categoriasDatos),
+    procedenciaDatos: activity.origenDatos ?? "",
+    accionesTratamiento: toStringArray(activity.accionesTratamiento),
+    plazoRetencion: activity.plazoConservacion ?? "",
+    fechaLevantamiento: activity.fechaLevantamiento ?? "",
+    medidasSeguridad: activity.medidaSeguridad ?? "",
+  };
+
+  const payload: StoredTreatmentDraft = {
+    mode,
+    activityId: activity.id,
+    sourceLabel: `${activity.codigo} · ${activity.nombre}`,
+    dependenciaNombre: activity.dependencia,
+    unidadEjecutoraNombre: activity.subdireccion ?? activity.dependencia,
+    values,
+  };
+
+  window.localStorage.setItem(TREATMENT_DRAFT_STORAGE_KEY, JSON.stringify(payload));
 }
 
 export function clearTreatmentDraft() {

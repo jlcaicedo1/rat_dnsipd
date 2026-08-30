@@ -1,63 +1,130 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { TableScrollFrame } from "../../components/TableScrollFrame";
+import { apiClient } from "../../services/api-client";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
-import { ReportPreviewModal } from "./ReportPreviewModal";
-import {
-  defaultSignatureFields,
-  getRatRegistryRecords,
-  getRatStatusOptions,
-  type RatRegistryRecord,
-  type SignatureFieldState,
-} from "./rat-registry-data";
-import { buildRegistryWorkspace, createRatVersion, persistRatStatus } from "./registry-workspace";
-import { buildReportDocument, printReportDocument } from "./TreatmentReportPreview";
-import { seedTreatmentDraftFromActivity } from "./treatment-draft-storage";
+
+type BackendRat = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  estadoGeneral: string;
+  dependencia: { id: number; nombre: string; sigla: string | null };
+  subdireccion: { id: number; nombre: string } | null;
+  versionActual: string | null;
+  totalActividades: number;
+};
+
+type BackendActivity = {
+  id: number;
+  ratId: number;
+  codigo: string;
+  nombre: string;
+  ratCodigo: string;
+  rat: string;
+  dependencia: string;
+  subdireccion: string | null;
+  estadoGeneral: string;
+  estadoVersionActual: string | null;
+  versionActualId: number | null;
+  versionActual: string | null;
+  finalidad: string | null;
+  plazoConservacion: string | null;
+  baseLicitud: string | null;
+  normaAplicable: string | null;
+  categoriasDatos: unknown;
+  categoriasTitulares: string | null;
+  accionesTratamiento: unknown;
+  origenDatos: string | null;
+  medidaSeguridad: string | null;
+  requiereEipd: boolean;
+  fechaLevantamiento: string | null;
+};
+
+function mapEstadoDisplay(raw: string): string {
+  const s = raw.toUpperCase();
+  if (s === "VIGENTE") return "Vigente";
+  if (s === "EN_REVISION") return "En revision";
+  if (s === "ARCHIVADO") return "Archivado";
+  return "Borrador";
+}
+
+const statusOptions = ["Borrador", "En revision", "Vigente", "Archivado"];
 
 export function RatListPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const roleCapabilities = getRoleCapabilities(user?.role);
-  const [workspaceVersion, setWorkspaceVersion] = useState(0);
-  const ratRecords = useMemo(() => buildRegistryWorkspace(getRatRegistryRecords()), [workspaceVersion]);
+
+  const ratsQuery = useQuery({
+    queryKey: ["rats", "list"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendRat[] }>("/rats");
+      return response.data.data;
+    },
+  });
+
+  const activitiesQuery = useQuery({
+    queryKey: ["actividades-backend"],
+    queryFn: async () => {
+      const response = await apiClient.get<{ data: BackendActivity[]; archivedCodigos: string[] }>("/actividades");
+      return response.data;
+    },
+    staleTime: 30_000,
+  });
+
+  const rats = ratsQuery.data ?? [];
+  const allActivities = activitiesQuery.data?.data ?? [];
+
+  const activitiesByRatId = useMemo(() => {
+    const map = new Map<number, BackendActivity[]>();
+    for (const act of allActivities) {
+      if (!map.has(act.ratId)) map.set(act.ratId, []);
+      map.get(act.ratId)!.push(act);
+    }
+    return map;
+  }, [allActivities]);
+
   const dependenciaOptions = useMemo(
-    () => Array.from(new Set(ratRecords.map((item) => item.dependencia))).sort(),
-    [ratRecords],
+    () => Array.from(new Set(rats.map((r) => r.dependencia.nombre))).sort(),
+    [rats],
   );
-  const statusOptions = getRatStatusOptions();
 
   const [search, setSearch] = useState("");
   const [dependencia, setDependencia] = useState("Todas");
   const [estado, setEstado] = useState("Todos");
   const [selectedRatId, setSelectedRatId] = useState<number | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const previewSurfaceRef = useRef<HTMLDivElement>(null);
 
-  const filteredRats = ratRecords.filter((record) => {
+  const filteredRats = rats.filter((rat) => {
     const matchesSearch =
       search.trim().length === 0 ||
-      [record.codigo, record.nombre, record.dependencia, record.unidadResponsable]
+      [rat.codigo, rat.nombre, rat.dependencia.nombre, rat.dependencia.sigla ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(search.toLowerCase());
-    const matchesDependencia = dependencia === "Todas" || record.dependencia === dependencia;
-    const matchesEstado = estado === "Todos" || record.estado === estado;
-
+    const matchesDependencia =
+      dependencia === "Todas" || rat.dependencia.nombre === dependencia;
+    const matchesEstado =
+      estado === "Todos" || mapEstadoDisplay(rat.estadoGeneral) === estado;
     return matchesSearch && matchesDependencia && matchesEstado;
   });
 
-  const selectedRat = filteredRats.find((item) => item.id === selectedRatId) ?? null;
+  const selectedRat = filteredRats.find((r) => r.id === selectedRatId) ?? null;
+  const selectedRatActivities = selectedRat
+    ? (activitiesByRatId.get(selectedRat.id) ?? [])
+    : [];
   const selectedActivity =
-    selectedRat?.activities.find((item) => item.id === selectedActivityId) ?? null;
+    selectedRatActivities.find((a) => a.id === selectedActivityId) ?? null;
 
   useEffect(() => {
     if (selectedRatId === null) {
       return;
     }
-
     if (!filteredRats.some((item) => item.id === selectedRatId)) {
       setSelectedRatId(null);
       setSelectedActivityId(null);
@@ -68,60 +135,21 @@ export function RatListPage() {
     if (!selectedRat) {
       return;
     }
-
-    if (!selectedRat.activities.some((item) => item.id === selectedActivityId)) {
-      setSelectedActivityId(selectedRat.activities[0]?.id ?? null);
+    const acts = activitiesByRatId.get(selectedRat.id) ?? [];
+    if (!acts.some((item) => item.id === selectedActivityId)) {
+      setSelectedActivityId(acts[0]?.id ?? null);
     }
-  }, [selectedActivityId, selectedRat]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-
-    if (isPreviewOpen) {
-      document.body.style.overflow = "hidden";
-    }
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isPreviewOpen]);
-
-  useEffect(() => {
-    if (!isPreviewOpen || typeof window === "undefined") {
-      return;
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsPreviewOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [isPreviewOpen]);
-
-  const [signatures, setSignatures] = useState<SignatureFieldState>(
-    () => buildSignatureFields(selectedRat),
-  );
-  useEffect(() => {
-    setSignatures(buildSignatureFields(selectedRat));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRat?.codigo]);
+  }, [selectedActivityId, selectedRat, activitiesByRatId]);
 
   const stats = useMemo<ExecutiveKpiItem[]>(() => {
-    const vigentes = ratRecords.filter((item) => item.estado === "Vigente").length;
-    const enRevision = ratRecords.filter((item) => item.estado === "En revision").length;
-    const archivados = ratRecords.filter((item) => item.estado === "Archivado").length;
+    const vigentes = rats.filter((r) => r.estadoGeneral === "VIGENTE").length;
+    const enRevision = rats.filter((r) => r.estadoGeneral === "EN_REVISION").length;
+    const archivados = rats.filter((r) => r.estadoGeneral === "ARCHIVADO").length;
 
     return [
       {
         label: "RAT registrados",
-        value: ratRecords.length,
+        value: rats.length,
         icon: "formalization" as const,
         tone: "neutral",
       },
@@ -144,7 +172,7 @@ export function RatListPage() {
         tone: "neutral",
       },
     ];
-  }, [ratRecords]);
+  }, [rats]);
 
   return (
     <section className="registry-page">
@@ -214,7 +242,11 @@ export function RatListPage() {
 
             <label className="field">
               <span>Estado</span>
-              <select className="input" value={estado} onChange={(event) => setEstado(event.target.value)}>
+              <select
+                className="input"
+                value={estado}
+                onChange={(event) => setEstado(event.target.value)}
+              >
                 <option value="Todos">Todos</option>
                 {statusOptions.map((item) => (
                   <option key={item} value={item}>
@@ -227,7 +259,9 @@ export function RatListPage() {
 
           <div
             className={
-              selectedRat ? "selection-action-bar selection-action-bar-active" : "selection-action-bar"
+              selectedRat
+                ? "selection-action-bar selection-action-bar-active"
+                : "selection-action-bar"
             }
             aria-live="polite"
           >
@@ -239,133 +273,100 @@ export function RatListPage() {
                     {selectedRat.codigo} · {selectedRat.nombre}
                   </strong>
                   <small>
-                    {selectedRat.dependencia} · {selectedRat.unidadResponsable}
+                    {selectedRat.dependencia.nombre}
+                    {selectedRat.subdireccion
+                      ? ` · ${selectedRat.subdireccion.nombre}`
+                      : ""}
                   </small>
                 </div>
 
                 <div className="selection-action-meta">
-                  <StatusBadge value={selectedRat.estado} />
-                  <RiskBadge value={selectedRat.riesgo} />
-                  <EipdBadge value={selectedRat.requiereEipd} />
-                </div>
-
-                <div className="selection-action-buttons">
-                  {roleCapabilities.rats.editBase && selectedRat.activities[0] ? (
-                    <button
-                      type="button"
-                      className="button-table-action"
-                      onClick={() => {
-                        seedTreatmentDraftFromActivity(selectedRat.activities[0], "edit");
-                        navigate(`/actividades/nuevo?mode=edit&source=${selectedRat.activities[0].id}`);
-                      }}
-                    >
-                      Editar base
-                    </button>
-                  ) : null}
-                  {roleCapabilities.rats.version ? (
-                    <button
-                      type="button"
-                      className="button-table-action button-table-action-secondary"
-                      onClick={() => {
-                        const versionedRat = createRatVersion(selectedRat);
-                        setSelectedRatId(versionedRat.id);
-                        setSelectedActivityId(versionedRat.activities[0]?.id ?? null);
-                        setWorkspaceVersion((current) => current + 1);
-                      }}
-                    >
-                      Versionar
-                    </button>
-                  ) : null}
-                  {roleCapabilities.rats.archive && selectedRat.estado !== "Archivado" ? (
-                    <button
-                      type="button"
-                      className="button-table-action button-table-action-danger"
-                      onClick={() => {
-                        persistRatStatus(selectedRat.id, "Archivado");
-                        setWorkspaceVersion((current) => current + 1);
-                      }}
-                    >
-                      Archivar
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="button-table-action"
-                    onClick={() => setIsPreviewOpen(true)}
+                  <span
+                    className={`pill status-pill-${normalizeToken(
+                      mapEstadoDisplay(selectedRat.estadoGeneral),
+                    )}`}
                   >
-                    Vista previa
-                  </button>
+                    {mapEstadoDisplay(selectedRat.estadoGeneral)}
+                  </span>
                 </div>
               </>
             ) : (
               <p className="selection-action-empty">
-                Seleccione un RAT para habilitar acciones documentales y de versionado.
+                Seleccione un RAT para ver sus actividades y acceder a los tratamientos.
               </p>
             )}
           </div>
 
-          <TableScrollFrame className="table-wrapper-matrix" maxHeight="64vh">
-            <table className="registry-table registry-table-rats">
-              <thead>
-                <tr>
-                  <th>Codigo RAT</th>
-                  <th>Registro</th>
-                  <th>Dependencia</th>
-                  <th>Estado</th>
-                  <th>Riesgo</th>
-                  <th>EIPD</th>
-                  <th>Actividades</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRats.map((record) => {
-                  const isSelected = selectedRat?.id === record.id;
+          {ratsQuery.isLoading ? (
+            <div className="empty-state">Cargando RAT...</div>
+          ) : (
+            <TableScrollFrame className="table-wrapper-matrix" maxHeight="64vh">
+              <table className="registry-table registry-table-rats">
+                <thead>
+                  <tr>
+                    <th>Codigo RAT</th>
+                    <th>Registro</th>
+                    <th>Dependencia</th>
+                    <th>Estado</th>
+                    <th>Actividades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRats.map((rat) => {
+                    const isSelected = selectedRat?.id === rat.id;
 
-                  return (
-                    <tr
-                      key={record.id}
-                      className={isSelected ? "table-row-selected table-row-interactive" : "table-row-interactive"}
-                      tabIndex={0}
-                      aria-selected={isSelected}
-                      onClick={() => setSelectedRatId(record.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setSelectedRatId(record.id);
+                    return (
+                      <tr
+                        key={rat.id}
+                        className={
+                          isSelected
+                            ? "table-row-selected table-row-interactive"
+                            : "table-row-interactive"
                         }
-                      }}
-                    >
-                      <td>
-                        <strong>{record.codigo}</strong>
-                      </td>
-                      <td>
-                        <div className="table-primary-copy">
-                          <strong>{record.nombre}</strong>
-                          <small>{record.resumen}</small>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="table-primary-copy">
-                          <strong>{record.unidadResponsable}</strong>
-                          <small>{record.dependencia}</small>
-                        </div>
-                      </td>
-                      <td>
-                        <StatusBadge value={record.estado} />
-                      </td>
-                      <td>
-                        <RiskBadge value={record.riesgo} />
-                      </td>
-                      <td>
-                        <EipdBadge value={record.requiereEipd} />
-                      </td>
-                      <td>{record.totalActividades}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableScrollFrame>
+                        tabIndex={0}
+                        aria-selected={isSelected}
+                        onClick={() => setSelectedRatId(rat.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedRatId(rat.id);
+                          }
+                        }}
+                      >
+                        <td>
+                          <strong>{rat.codigo}</strong>
+                        </td>
+                        <td>
+                          <div className="table-primary-copy">
+                            <strong>{rat.nombre}</strong>
+                            <small>{rat.descripcion ?? ""}</small>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="table-primary-copy">
+                            <strong>
+                              {rat.dependencia.sigla ?? rat.dependencia.nombre}
+                            </strong>
+                            <small>{rat.dependencia.nombre}</small>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            className={`pill status-pill-${normalizeToken(
+                              mapEstadoDisplay(rat.estadoGeneral),
+                            )}`}
+                          >
+                            {mapEstadoDisplay(rat.estadoGeneral)}
+                          </span>
+                        </td>
+                        <td>{rat.totalActividades}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableScrollFrame>
+          )}
 
           {selectedRat ? (
             <section className="registry-activities-strip">
@@ -374,11 +375,11 @@ export function RatListPage() {
                   <span className="brand-kicker">Actividades hijas</span>
                   <h3>{selectedRat.codigo}</h3>
                 </div>
-                <span className="pill">{selectedRat.activities.length} actividades</span>
+                <span className="pill">{selectedRatActivities.length} actividades</span>
               </div>
 
               <div className="activity-chip-row">
-                {selectedRat.activities.map((activity) => {
+                {selectedRatActivities.map((activity) => {
                   const isSelected = selectedActivity?.id === activity.id;
 
                   return (
@@ -393,10 +394,19 @@ export function RatListPage() {
                       onClick={() => setSelectedActivityId(activity.id)}
                     >
                       <strong>{activity.nombre}</strong>
-                      <span>{activity.unidadEjecutora}</span>
+                      <span>{activity.subdireccion ?? activity.dependencia}</span>
                       <div className="activity-chip-meta">
-                        <StatusBadge value={activity.estado} />
-                        <RiskBadge value={activity.riesgo} />
+                        <span
+                          className={`pill status-pill-${normalizeToken(
+                            mapEstadoDisplay(
+                              activity.estadoVersionActual ?? activity.estadoGeneral,
+                            ),
+                          )}`}
+                        >
+                          {mapEstadoDisplay(
+                            activity.estadoVersionActual ?? activity.estadoGeneral,
+                          )}
+                        </span>
                       </div>
                     </button>
                   );
@@ -404,85 +414,82 @@ export function RatListPage() {
               </div>
             </section>
           ) : (
-            <div className="empty-state">No hay RAT para los filtros seleccionados.</div>
+            <div className="empty-state">
+              No hay RAT registrados con los filtros seleccionados.
+            </div>
           )}
         </section>
 
         <aside className="panel registry-preview-pane">
-          {selectedRat && selectedActivity ? (
+          {selectedRat ? (
             <>
               <div className="registry-preview-summary">
                 <div>
-                  <span className="brand-kicker">Salida documental</span>
+                  <span className="brand-kicker">Ficha RAT</span>
                   <h3>{selectedRat.codigo}</h3>
-                  <p className="page-copy">
-                    La ficha formal solo se abre cuando necesite validarla antes de imprimirla o descargarla.
-                  </p>
+                  <p className="page-copy">{selectedRat.nombre}</p>
                 </div>
                 <div className="registry-preview-meta">
-                  <StatusBadge value={selectedRat.estado} />
-                  <RiskBadge value={selectedRat.riesgo} />
-                  <EipdBadge value={selectedRat.requiereEipd} />
+                  <span
+                    className={`pill status-pill-${normalizeToken(
+                      mapEstadoDisplay(selectedRat.estadoGeneral),
+                    )}`}
+                  >
+                    {mapEstadoDisplay(selectedRat.estadoGeneral)}
+                  </span>
                 </div>
               </div>
 
               <div className="registry-document-grid">
                 <article className="registry-document-card">
-                  <span>Actividad seleccionada</span>
-                  <strong>{selectedActivity.nombre}</strong>
-                  <small>{selectedActivity.codigo}</small>
+                  <span>Dependencia</span>
+                  <strong>{selectedRat.dependencia.nombre}</strong>
+                  <small>{selectedRat.dependencia.sigla ?? ""}</small>
+                </article>
+                {selectedRat.subdireccion ? (
+                  <article className="registry-document-card">
+                    <span>Subdireccion</span>
+                    <strong>{selectedRat.subdireccion.nombre}</strong>
+                  </article>
+                ) : null}
+                <article className="registry-document-card">
+                  <span>Version actual</span>
+                  <strong>{selectedRat.versionActual ?? "Sin version"}</strong>
                 </article>
                 <article className="registry-document-card">
-                  <span>Dependencia responsable</span>
-                  <strong>{selectedRat.dependencia}</strong>
-                  <small>{selectedRat.unidadResponsable}</small>
+                  <span>Actividades registradas</span>
+                  <strong>{selectedRat.totalActividades}</strong>
                 </article>
-                <article className="registry-document-card">
-                  <span>Ultima actualizacion</span>
-                  <strong>{selectedActivity.report.ultimaActualizacion}</strong>
-                  <small>Version {selectedActivity.version}</small>
-                </article>
-                <article className="registry-document-card">
-                  <span>Parametros activos</span>
-                  <strong>
-                    {dependencia === "Todas" ? selectedRat.dependencia : dependencia}
-                  </strong>
-                  <small>{estado === "Todos" ? selectedRat.estado : estado}</small>
-                </article>
-              </div>
-
-              <div className="registry-document-actions">
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => setIsPreviewOpen(true)}
-                >
-                  Vista previa
-                </button>
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={() => setIsPreviewOpen(true)}
-                >
-                  Imprimir ficha
-                </button>
-                {roleCapabilities.rats.editBase ? (
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => {
-                      seedTreatmentDraftFromActivity(selectedActivity, "edit");
-                      navigate(`/actividades/nuevo?mode=edit&source=${selectedActivity.id}`);
-                    }}
-                  >
-                    Editar tratamiento base
-                  </button>
+                {selectedActivity ? (
+                  <article className="registry-document-card">
+                    <span>Actividad seleccionada</span>
+                    <strong>{selectedActivity.nombre}</strong>
+                    <small>{selectedActivity.codigo}</small>
+                  </article>
                 ) : null}
               </div>
 
-              <p className="registry-document-note">
-                La vista previa es de solo lectura y siempre debe respetar el formato final del documento.
-              </p>
+              <div className="registry-document-actions">
+                <Link
+                  to={`/actividades?q=${encodeURIComponent(selectedRat.codigo)}`}
+                  className="button-secondary"
+                >
+                  Ver actividades
+                </Link>
+                {selectedActivity ? (
+                  <button
+                    type="button"
+                    className="button-primary"
+                    onClick={() =>
+                      navigate(
+                        `/actividades/nuevo?mode=edit&source=${selectedActivity.id}`,
+                      )
+                    }
+                  >
+                    Editar tratamiento
+                  </button>
+                ) : null}
+              </div>
             </>
           ) : (
             <div className="empty-state">
@@ -491,99 +498,14 @@ export function RatListPage() {
           )}
         </aside>
       </div>
-
-      {selectedRat && selectedActivity ? (
-        <ReportPreviewModal
-          activity={selectedActivity}
-          heading={`Registro de actividad · ${selectedActivity.codigo}`}
-          isOpen={isPreviewOpen}
-          onClose={() => setIsPreviewOpen(false)}
-          onDownload={() => {
-            if (typeof document === "undefined") return;
-            const documentHtml = buildReportDocument(
-              `Registro ${selectedActivity.codigo}`,
-              selectedActivity.report,
-              signatures,
-              selectedActivity,
-            );
-            const blob = new Blob([documentHtml], { type: "text/html;charset=utf-8" });
-            const objectUrl = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = objectUrl;
-            link.download = `${selectedActivity.codigo}-${slugify(selectedActivity.nombre)}.html`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(objectUrl);
-          }}
-          onPrint={() => {
-            printReportDocument(
-              `Registro ${selectedActivity.codigo}`,
-              selectedActivity.report,
-              signatures,
-              selectedActivity,
-            );
-          }}
-          report={selectedActivity.report}
-          signatures={signatures}
-          onSignatureChange={(field, value) =>
-            setSignatures((prev) => ({ ...prev, [field]: value }))
-          }
-          surfaceRef={previewSurfaceRef}
-        />
-      ) : null}
     </section>
-  );
-}
-
-function StatusBadge({ value }: { value: RatRegistryRecord["estado"] }) {
-  return (
-    <span className={`pill status-pill-${normalizeToken(value)}`}>{value}</span>
-  );
-}
-
-function RiskBadge({ value }: { value: RatRegistryRecord["riesgo"] }) {
-  return (
-    <span className={`pill risk-pill-${normalizeToken(value)}`}>{value}</span>
-  );
-}
-
-function EipdBadge({ value }: { value: boolean }) {
-  return (
-    <span className={value ? "pill eipd-pill-yes" : "pill eipd-pill-no"}>
-      {value ? "Si" : "No"}
-    </span>
   );
 }
 
 function normalizeToken(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, "-")
     .toLowerCase();
-}
-
-function buildSignatureFields(record: RatRegistryRecord | null): SignatureFieldState {
-  if (!record) {
-    return defaultSignatureFields;
-  }
-
-  return {
-    elaboradoPorNombre: record.responsableLevantamiento,
-    elaboradoPorCargo: "Responsable del levantamiento RAT",
-    revisadoPorNombre: "",
-    revisadoPorCargo: "Asesoria DPD / Delegado de Proteccion de Datos",
-    autoridadNombre: record.responsableTratamiento,
-    autoridadCargo: record.unidadResponsable,
-  };
-}
-
-function slugify(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
