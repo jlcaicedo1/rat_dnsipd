@@ -1053,12 +1053,10 @@ function buildTraceabilityFromBackend(
       "Sin plataforma registrada",
   }));
 
-  const cats = Array.isArray((activity as unknown as { categoriasDatos?: unknown }).categoriasDatos)
-    ? (activity as unknown as { categoriasDatos: string[] }).categoriasDatos
-    : activity.report.categoriasDatos
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+  const { asStringArray: cats } = parseCategoriasDatos(
+    (activity as unknown as { categoriasDatos?: unknown }).categoriasDatos ??
+    activity.report.categoriasDatos.split(";").map(s => s.split(":")[0].trim()).filter(Boolean),
+  );
 
   return {
     owner: {
@@ -1093,15 +1091,69 @@ function mapImpactoToCriticidad(
   return "Media";
 }
 
+const CATEGORIA_CODE_DISPLAY: Record<string, string> = {
+  DATOS_DE_IDENTIFICACION: "Datos de Identificación",
+  DATOS_DE_CONTACTO: "Datos de Contacto",
+  DATOS_LABORALES: "Datos Laborales",
+  DATOS_ACADEMICOS: "Datos Académicos",
+  DATOS_DE_SALUD: "Datos de Salud",
+  DATOS_BIOMETRICOS: "Datos Biométricos",
+  DATOS_FINANCIEROS_BANCARIOS_O_CREDITICIOS: "Datos Financieros, Bancarios o Crediticios",
+  DATOS_SOCIOECONOMICOS: "Datos Socioeconómicos",
+  DATOS_DE_PARENTESCO_O_VINCULO: "Datos de Parentesco o Vínculo",
+  DATOS_DE_FILIACION: "Datos de Filiación",
+  DATOS_DE_DIVERSIDAD_Y_AUTOIDENTIFICACION: "Datos de Diversidad y Autoidentificación",
+  DATOS_DE_CONDICION_MIGRATORIA: "Datos de Condición Migratoria",
+  DATOS_RELACIONADOS_CON_AFILIACION_SINDICAL_O_GREMIAL: "Datos de Afiliación Sindical o Gremial",
+  DATOS_DE_PERSONAS_CON_DISCAPACIDAD_Y_SUS_SUSTITUTOS: "Datos de Personas con Discapacidad y sus Sustitutos",
+  DATOS_DE_MENORES_DE_EDAD: "Datos de Menores de Edad",
+  DATOS_LEGALES_Y_DE_CUMPLIMIENTO_NORMATIVO: "Datos Legales y de Cumplimiento Normativo",
+  DATOS_TECNOLOGICOS: "Datos Tecnológicos",
+};
+
+type StructuredCategoriaDato = { titular: string; codigo: string; campos: string[] };
+
+function parseCategoriasDatos(raw: unknown): { cats: string; titulares: string; asStringArray: string[] } {
+  if (!Array.isArray(raw) || raw.length === 0) return { cats: "", titulares: "", asStringArray: [] };
+
+  const first = raw[0];
+  if (first !== null && typeof first === "object" && "codigo" in (first as object)) {
+    const structured = raw as StructuredCategoriaDato[];
+    // Collect unique categories preserving order
+    const byCode = new Map<string, { name: string; campos: string[] }>();
+    for (const item of structured) {
+      const name = CATEGORIA_CODE_DISPLAY[item.codigo] ?? item.codigo;
+      if (!byCode.has(item.codigo)) {
+        byCode.set(item.codigo, { name, campos: [...item.campos] });
+      } else {
+        const ex = byCode.get(item.codigo)!;
+        for (const c of item.campos) if (!ex.campos.includes(c)) ex.campos.push(c);
+      }
+    }
+    const cats = [...byCode.values()]
+      .map(c => c.campos.length > 0 ? `${c.name}: ${c.campos.join(", ")}` : c.name)
+      .join(";\n");
+    const uniqueTitulares = [...new Set(structured.map(s => s.titular).filter(Boolean))];
+    const titulares = uniqueTitulares.join("; ");
+    const asStringArray = [...byCode.values()].map(c => c.name);
+    return { cats, titulares, asStringArray };
+  }
+
+  // Legacy string[] format
+  const strs = (raw as string[]).filter(Boolean);
+  return { cats: strs.join("; "), titulares: "", asStringArray: strs };
+}
+
 function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
   const estado = a.estadoGeneral === "ARCHIVADO"
     ? ("Archivado" as RecordStatus)
     : mapEstado(a.estadoVersionActual);
-  const cats = Array.isArray(a.categoriasDatos)
-    ? (a.categoriasDatos as string[]).join(", ")
-    : "";
+
+  const { cats, titulares: titularesFromCats } = parseCategoriasDatos(a.categoriasDatos);
+  const titulares = titularesFromCats || (a.categoriasTitulares ?? "");
+
   const acciones = Array.isArray(a.accionesTratamiento)
-    ? (a.accionesTratamiento as string[]).join(", ")
+    ? (a.accionesTratamiento as string[]).join("; ")
     : "";
   const fecha = a.fechaLevantamiento ? a.fechaLevantamiento.slice(0, 10) : "";
   return {
@@ -1131,12 +1183,12 @@ function mapBackendToRegistry(a: BackendActivity): ActivityRegistryRecord {
       estado,
       nivelRiesgo: "Bajo" as RiskLevel,
       requiereEipd: a.requiereEipd,
-      fechaCreacion: "",
+      fechaCreacion: fecha,
       ultimaActualizacion: fecha,
       finalidadEspecifica: a.finalidad ?? "",
       baseLicitud: a.baseLicitud ?? "",
       normaAplicable: a.normaAplicable ?? "",
-      titulares: a.categoriasTitulares ?? "",
+      titulares,
       categoriasDatos: cats,
       datosSensibles: "",
       datosNna: "",
