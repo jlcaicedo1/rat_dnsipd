@@ -37,7 +37,8 @@ services:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
       - ./backend:/app/backend
-    command: ["node", "backend/dist/src/main.js"]
+      - /app/backend/node_modules
+      - /app/backend/dist
     depends_on:
       postgres:
         condition: service_healthy

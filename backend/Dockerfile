@@ -11,8 +11,10 @@ RUN npm ci --workspace backend --include-workspace-root
 FROM deps AS development
 ENV NODE_ENV=development
 COPY backend backend
+RUN npm --workspace backend run prisma:generate
+RUN npm --workspace backend run build
 EXPOSE 3000
-CMD ["npm", "--workspace", "backend", "run", "start:dev"]
+CMD ["node", "backend/dist/src/main.js"]
 
 FROM deps AS build
 COPY backend backend
