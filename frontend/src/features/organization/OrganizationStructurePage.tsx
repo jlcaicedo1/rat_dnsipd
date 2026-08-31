@@ -138,19 +138,6 @@ export function OrganizationStructurePage() {
   const hasPendingChanges = Object.keys(pendingChangesById).length > 0;
   const activeUnit = activeUnitId ? displayedUnitsById[activeUnitId] ?? null : null;
   const activeUnitPendingChange = activeUnitId ? pendingChangesById[activeUnitId] : undefined;
-  if (!roleCapabilities.organization.view) {
-    return (
-      <section className="panel access-panel">
-        <span className="brand-kicker">Acceso restringido</span>
-        <h2>Administracion de dependencias</h2>
-        <p className="page-copy">
-          Esta vista queda reservada para perfiles administradores porque afecta maestros,
-          permisos, filtros y disponibilidad de nuevas dependencias dentro del sistema.
-        </p>
-      </section>
-    );
-  }
-
   useEffect(() => {
     setSearch(searchParams.get("q") ?? "");
     setStatusFilter((searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas");
@@ -189,6 +176,19 @@ export function OrganizationStructurePage() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeUnit]);
+
+  if (!roleCapabilities.organization.view) {
+    return (
+      <section className="panel access-panel">
+        <span className="brand-kicker">Acceso restringido</span>
+        <h2>Administracion de dependencias</h2>
+        <p className="page-copy">
+          Esta vista queda reservada para perfiles administradores porque afecta maestros,
+          permisos, filtros y disponibilidad de nuevas dependencias dentro del sistema.
+        </p>
+      </section>
+    );
+  }
 
   const inactivas = displayedUnits.filter((unit) => unit.status === "Inactiva").length;
   const sinUso = displayedUnits.filter(
