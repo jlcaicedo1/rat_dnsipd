@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -58,6 +59,14 @@ export class SubdireccionesController {
     @Body() dto: UpdateSubdireccionDto,
   ) {
     return this.subdireccionesService.update(id, dto, user);
+  }
+
+  @Delete(':id')
+  delete(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.subdireccionesService.delete(id, user);
   }
 
   @Get(':id/rats')

@@ -1,183 +1,252 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import { ExecutiveKpiGrid, type ExecutiveKpiItem } from "../../components/ExecutiveKpiGrid";
 import { apiClient } from "../../services/api-client";
 import { useAuthStore } from "../auth/auth-store";
 import { getRoleCapabilities } from "../auth/permissions";
-import {
-  getOrganizationUnits,
-  saveOrganizationUnits,
-  type OrgUnit,
-  type OrgUnitStatus,
-  type OrgUnitType,
-} from "./organization-structure-data";
 
-type PendingOrgUnitChange = Partial<Pick<OrgUnit, "nombre" | "sigla" | "ownerRole" | "status">>;
+// ─── domain types ─────────────────────────────────────────────────────────────
 
-type BackendRat = {
+type TipoProceso = {
   id: number;
-  codigo: string;
-  dependencia: { id: number; nombre: string; sigla: string | null };
+  nombre: string;
+  descripcion: string | null;
 };
 
-type BackendActivity = {
+type Dependencia = {
   id: number;
-  dependencia: string;
-  subdireccion: string | null;
+  nombre: string;
+  sigla: string | null;
+  responsable: string | null;
+  descripcion: string | null;
+  activo: boolean;
+  tipoProceso: TipoProceso;
+  _count: { subdirecciones: number; rats: number };
 };
+
+type Subdireccion = {
+  id: number;
+  nombre: string;
+  sigla: string | null;
+  responsable: string | null;
+  descripcion: string | null;
+  activo: boolean;
+  dependenciaId: number;
+  _count: { rats: number };
+};
+
+type DepFormState = {
+  nombre: string;
+  sigla: string;
+  responsable: string;
+  descripcion: string;
+  tipoProcesoId: number | "";
+};
+
+type SubFormState = {
+  nombre: string;
+  sigla: string;
+  responsable: string;
+  descripcion: string;
+};
+
+// ─── main page ────────────────────────────────────────────────────────────────
 
 export function OrganizationStructurePage() {
-  const [searchParams] = useSearchParams();
+  const qc = useQueryClient();
   const user = useAuthStore((state) => state.user);
-  const roleCapabilities = getRoleCapabilities(user?.role);
-  const [units, setUnits] = useState(() => getOrganizationUnits());
-  const [pendingChangesById, setPendingChangesById] = useState<
-    Record<string, PendingOrgUnitChange>
-  >({});
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
-  const [statusFilter, setStatusFilter] = useState<"Todas" | OrgUnitStatus>(
-    () => (searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas",
-  );
-  const [typeFilter, setTypeFilter] = useState<"Todos" | OrgUnitType>(
-    () => (searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos",
-  );
-  const [usageFilter, setUsageFilter] = useState<"Todos" | "Con RAT" | "Sin uso">(
-    () => {
-      const usage = searchParams.get("uso");
-      if (usage === "con-rat") {
-        return "Con RAT";
-      }
-      if (usage === "sin-uso") {
-        return "Sin uso";
-      }
-      return "Todos";
-    },
-  );
-  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const role = getRoleCapabilities(user?.role);
+  const canEdit = role.organization.save;
+  const canToggle = role.organization.updateStatus;
 
-  const ratsQuery = useQuery({
-    queryKey: ["rats", "list"],
-    queryFn: async () => {
-      const response = await apiClient.get<{ data: BackendRat[] }>("/rats");
-      return response.data.data;
-    },
-    staleTime: 60_000,
+  const [search, setSearch] = useState("");
+  const [tipoFilter, setTipoFilter] = useState("Todos");
+  const [statusFilter, setStatusFilter] = useState<"Todos" | "Activa" | "Inactiva">("Todos");
+
+  const [depModal, setDepModal] = useState<{
+    mode: "create" | "edit";
+    item?: Dependencia;
+  } | null>(null);
+
+  const [subModal, setSubModal] = useState<{
+    mode: "create" | "edit";
+    parentDep: Dependencia;
+    item?: Subdireccion;
+  } | null>(null);
+
+  const [confirmDeleteDep, setConfirmDeleteDep] = useState<number | null>(null);
+  const [confirmDeleteSub, setConfirmDeleteSub] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // ── queries ──
+  const tiposQuery = useQuery({
+    queryKey: ["tipo-proceso"],
+    queryFn: () =>
+      apiClient
+        .get<{ data: TipoProceso[] }>("/tipo-proceso")
+        .then((r) => r.data.data),
+    staleTime: 120_000,
   });
-  const activitiesQuery = useQuery({
-    queryKey: ["actividades-backend"],
-    queryFn: async () => {
-      const response = await apiClient.get<{ data: BackendActivity[] }>("/actividades");
-      return response.data.data;
-    },
-    staleTime: 60_000,
+
+  const depsQuery = useQuery({
+    queryKey: ["dependencias"],
+    queryFn: () =>
+      apiClient
+        .get<{ data: Dependencia[] }>("/dependencias")
+        .then((r) => r.data.data),
+    staleTime: 30_000,
   });
-  const ratRecords = ratsQuery.data ?? [];
-  const activityRecords = activitiesQuery.data ?? [];
 
-  const unitsById = useMemo(
-    () => Object.fromEntries(units.map((unit) => [unit.id, unit])),
-    [units],
-  );
+  const subsQuery = useQuery({
+    queryKey: ["subdirecciones"],
+    queryFn: () =>
+      apiClient
+        .get<{ data: Subdireccion[] }>("/subdirecciones")
+        .then((r) => r.data.data),
+    staleTime: 30_000,
+  });
 
-  const displayedUnits = useMemo(
-    () => units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id])),
-    [pendingChangesById, units],
-  );
+  const tipos = tiposQuery.data ?? [];
+  const allDeps = depsQuery.data ?? [];
+  const allSubs = subsQuery.data ?? [];
 
-  const displayedUnitsById = useMemo(
-    () => Object.fromEntries(displayedUnits.map((unit) => [unit.id, unit])),
-    [displayedUnits],
-  );
+  // ── invalidation ──
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["dependencias"] });
+    qc.invalidateQueries({ queryKey: ["subdirecciones"] });
+  };
 
-  const childrenByParent = useMemo(() => {
-    const map: Record<string, OrgUnit[]> = {};
+  // ── mutations ──
+  const saveDep = useMutation({
+    mutationFn: ({ id, body }: { id?: number; body: Record<string, unknown> }) =>
+      id
+        ? apiClient.patch(`/dependencias/${id}`, body)
+        : apiClient.post("/dependencias", body),
+    onSuccess: () => {
+      refresh();
+      setDepModal(null);
+    },
+  });
 
-    for (const unit of displayedUnits) {
-      const parentId = unit.parentId ?? "__root__";
-      map[parentId] ??= [];
-      map[parentId].push(unit);
-    }
+  const deleteDep = useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/dependencias/${id}`),
+    onSuccess: () => {
+      refresh();
+      setConfirmDeleteDep(null);
+      setDeleteError(null);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Error al eliminar la dependencia.";
+      setDeleteError(msg);
+    },
+  });
 
-    for (const key of Object.keys(map)) {
-      map[key].sort((left, right) => left.nombre.localeCompare(right.nombre));
-    }
+  const saveSub = useMutation({
+    mutationFn: ({ id, body }: { id?: number; body: Record<string, unknown> }) =>
+      id
+        ? apiClient.patch(`/subdirecciones/${id}`, body)
+        : apiClient.post("/subdirecciones", body),
+    onSuccess: () => {
+      refresh();
+      setSubModal(null);
+    },
+  });
 
-    return map;
-  }, [displayedUnits]);
+  const deleteSub = useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/subdirecciones/${id}`),
+    onSuccess: () => {
+      refresh();
+      setConfirmDeleteSub(null);
+      setDeleteError(null);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Error al eliminar la subdireccion.";
+      setDeleteError(msg);
+    },
+  });
 
-  const hasActiveFilter =
-    search.trim().length > 0 ||
-    statusFilter !== "Todas" ||
-    typeFilter !== "Todos" ||
-    usageFilter !== "Todos";
+  // ── derived data ──
+  const norm = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
 
-  const maintenanceUnits = useMemo(() => {
-    const normalizedSearch = normalize(search);
-
-    return displayedUnits.filter((unit) => {
-      const matchesSearch = normalizedSearch.length === 0 || isMatch(unit, normalizedSearch);
-      const matchesStatus = statusFilter === "Todas" || unit.status === statusFilter;
-      const matchesType = typeFilter === "Todos" || unit.tipo === typeFilter;
-      const linkedRats = countLinkedRats(unit, ratRecords);
-      const linkedActivities = countLinkedActivities(unit, activityRecords);
-      const matchesUsage =
-        usageFilter === "Todos" ||
-        (usageFilter === "Con RAT" ? linkedRats > 0 : linkedRats === 0 && linkedActivities === 0);
-
-      return matchesSearch && matchesStatus && matchesType && matchesUsage;
+  const visibleDeps = useMemo(() => {
+    const q = norm(search.trim());
+    return allDeps.filter((d) => {
+      if (tipoFilter !== "Todos" && d.tipoProceso.nombre !== tipoFilter) return false;
+      if (statusFilter === "Activa" && !d.activo) return false;
+      if (statusFilter === "Inactiva" && d.activo) return false;
+      if (q) {
+        const hay = norm(
+          [d.nombre, d.sigla ?? "", d.responsable ?? ""].join(" "),
+        );
+        if (!hay.includes(q)) return false;
+      }
+      return true;
     });
-  }, [activityRecords, displayedUnits, ratRecords, search, statusFilter, typeFilter, usageFilter]);
+  }, [allDeps, tipoFilter, statusFilter, search]);
 
-  const maintenanceUnitIds = useMemo(
-    () => new Set(maintenanceUnits.map((u) => u.id)),
-    [maintenanceUnits],
-  );
-
-  const hasPendingChanges = Object.keys(pendingChangesById).length > 0;
-  const activeUnit = activeUnitId ? displayedUnitsById[activeUnitId] ?? null : null;
-  const activeUnitPendingChange = activeUnitId ? pendingChangesById[activeUnitId] : undefined;
-  useEffect(() => {
-    setSearch(searchParams.get("q") ?? "");
-    setStatusFilter((searchParams.get("estado") as "Todas" | OrgUnitStatus) ?? "Todas");
-    setTypeFilter((searchParams.get("tipo") as "Todos" | OrgUnitType) ?? "Todos");
-    const usage = searchParams.get("uso");
-    setUsageFilter(usage === "con-rat" ? "Con RAT" : usage === "sin-uso" ? "Sin uso" : "Todos");
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
+  const subsByDep = useMemo(() => {
+    const map = new Map<number, Subdireccion[]>();
+    for (const s of allSubs) {
+      const arr = map.get(s.dependenciaId) ?? [];
+      arr.push(s);
+      map.set(s.dependenciaId, arr);
     }
+    return map;
+  }, [allSubs]);
 
-    const previousOverflow = document.body.style.overflow;
-
-    if (activeUnit) {
-      document.body.style.overflow = "hidden";
+  const grouped = useMemo(() => {
+    const map = new Map<number, { tipo: TipoProceso; deps: Dependencia[] }>();
+    for (const dep of visibleDeps) {
+      const tp = dep.tipoProceso;
+      if (!map.has(tp.id)) map.set(tp.id, { tipo: tp, deps: [] });
+      map.get(tp.id)!.deps.push(dep);
     }
+    return Array.from(map.values()).sort((a, b) =>
+      a.tipo.nombre.localeCompare(b.tipo.nombre),
+    );
+  }, [visibleDeps]);
 
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [activeUnit]);
+  // ── KPIs ──
+  const inactivas = allDeps.filter((d) => !d.activo).length;
+  const sinRat = allDeps.filter((d) => d._count.rats === 0).length;
+  const kpis: ExecutiveKpiItem[] = [
+    {
+      label: "Total dependencias",
+      value: allDeps.length,
+      icon: "organization" as const,
+      tone: "neutral",
+    },
+    {
+      label: "Activas",
+      value: allDeps.filter((d) => d.activo).length,
+      icon: "checklist" as const,
+      tone: "success",
+    },
+    {
+      label: "Inactivas",
+      value: inactivas,
+      icon: "risks" as const,
+      tone: inactivas > 0 ? "warning" : "neutral",
+    },
+    {
+      label: "Sin RAT asignado",
+      value: sinRat,
+      icon: "audit" as const,
+      tone: sinRat > 0 ? "warning" : "success",
+    },
+  ];
 
-  useEffect(() => {
-    if (!activeUnit || typeof window === "undefined") {
-      return;
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setActiveUnitId(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeUnit]);
-
-  if (!roleCapabilities.organization.view) {
+  if (!role.organization.view) {
     return (
       <section className="panel access-panel">
         <span className="brand-kicker">Acceso restringido</span>
@@ -190,92 +259,6 @@ export function OrganizationStructurePage() {
     );
   }
 
-  const inactivas = displayedUnits.filter((unit) => unit.status === "Inactiva").length;
-  const sinUso = displayedUnits.filter(
-    (unit) =>
-      countLinkedRats(unit, ratRecords) === 0 &&
-      countLinkedActivities(unit, activityRecords) === 0,
-  ).length;
-
-  const stats: ExecutiveKpiItem[] = [
-    {
-      label: "Total dependencias",
-      value: displayedUnits.length,
-      icon: "organization" as const,
-      tone: "neutral",
-    },
-    {
-      label: "Activas",
-      value: displayedUnits.filter((unit) => unit.status === "Activa").length,
-      icon: "checklist" as const,
-      tone: "success",
-    },
-    {
-      label: "Inactivas",
-      value: inactivas,
-      icon: "risks" as const,
-      tone: inactivas > 0 ? "warning" : "neutral",
-    },
-    {
-      label: "Sin RAT asignado",
-      value: sinUso,
-      icon: "audit" as const,
-      tone: sinUso > 0 ? "warning" : "success",
-    },
-  ];
-
-  function handleSaveAllChanges() {
-    const nextUnits = units.map((unit) => mergeUnitWithPendingChange(unit, pendingChangesById[unit.id]));
-
-    setUnits(nextUnits);
-    saveOrganizationUnits(nextUnits);
-    setPendingChangesById({});
-  }
-
-  function handleQueueStatusChange(unit: OrgUnit) {
-    if (!roleCapabilities.organization.updateStatus) {
-      return;
-    }
-
-    applyPendingChanges(unit.id, { status: unit.status === "Activa" ? "Inactiva" : "Activa" });
-  }
-
-  function applyPendingChanges(unitId: string, changes: PendingOrgUnitChange) {
-    const originalUnit = unitsById[unitId];
-
-    if (!originalUnit) {
-      return;
-    }
-
-    setPendingChangesById((current) => {
-      const next = { ...current };
-      const normalized = getNormalizedPendingChange(originalUnit, {
-        ...current[unitId],
-        ...changes,
-      });
-
-      if (normalized) {
-        next[unitId] = normalized;
-      } else {
-        delete next[unitId];
-      }
-
-      return next;
-    });
-  }
-
-  function resetPendingChanges(unitId: string) {
-    setPendingChangesById((current) => {
-      if (!current[unitId]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[unitId];
-      return next;
-    });
-  }
-
   return (
     <section className="org-page">
       <header className="page-header page-header-inline">
@@ -285,43 +268,53 @@ export function OrganizationStructurePage() {
             <span className="page-title-icon">
               <AppIcon name="organization" size={22} strokeWidth={2.1} />
             </span>
-            <h2>Administracion de dependencias</h2>
+            <h2>Estructura organizacional</h2>
           </div>
           <p className="page-copy">
-            La estructura organica se gestiona como maestro transversal desde una sola tabla:
-            cambio rapido de estado, detalle contextual y persistencia administrativa centralizada.
-          </p>
-          <p className="permission-hint">
-            Rol actual: <strong>{roleCapabilities.label}</strong>. Los cambios quedan en borrador
-            hasta confirmar el guardado general del modulo.
+            Fuente única de verdad para dependencias y subdirecciones. Cada cambio persiste en
+            base de datos con trazabilidad de auditoría completa.
           </p>
         </div>
-
-        <div className="registry-header-actions">
-          {roleCapabilities.organization.save ? (
+        {canEdit ? (
+          <div className="registry-header-actions">
             <button
               type="button"
               className="button-primary"
-              disabled={!hasPendingChanges}
-              onClick={handleSaveAllChanges}
+              onClick={() => setDepModal({ mode: "create" })}
             >
-              Guardar cambios
+              Nueva dependencia
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </header>
 
-      <ExecutiveKpiGrid items={stats} />
+      <ExecutiveKpiGrid items={kpis} />
 
       <div className="org-toolbar panel">
         <label className="field">
-          <span>Buscar dependencia o sigla</span>
+          <span>Buscar</span>
           <input
             className="input"
-            placeholder="Ej. DSGSIF, DNTI, salud, patrocinio"
+            placeholder="Nombre, sigla o responsable"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
           />
+        </label>
+
+        <label className="field">
+          <span>Tipo de proceso</span>
+          <select
+            className="input"
+            value={tipoFilter}
+            onChange={(e) => setTipoFilter(e.target.value)}
+          >
+            <option value="Todos">Todos</option>
+            {tipos.map((t) => (
+              <option key={t.id} value={t.nombre}>
+                {t.nombre}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="field">
@@ -329,284 +322,213 @@ export function OrganizationStructurePage() {
           <select
             className="input"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as "Todas" | OrgUnitStatus)}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as "Todos" | "Activa" | "Inactiva")
+            }
           >
-            <option value="Todas">Todas</option>
+            <option value="Todos">Todos</option>
             <option value="Activa">Activa</option>
             <option value="Inactiva">Inactiva</option>
           </select>
         </label>
-
-        <label className="field">
-          <span>Tipo</span>
-          <select
-            className="input"
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value as "Todos" | OrgUnitType)}
-          >
-            <option value="Todos">Todos</option>
-            {getOrgTypes(displayedUnits).map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Uso</span>
-          <select
-            className="input"
-            value={usageFilter}
-            onChange={(event) => setUsageFilter(event.target.value as "Todos" | "Con RAT" | "Sin uso")}
-          >
-            <option value="Todos">Todos</option>
-            <option value="Con RAT">Con RAT</option>
-            <option value="Sin uso">Sin uso</option>
-          </select>
-        </label>
       </div>
 
-      <div className="panel-heading panel-heading-compact panel" style={{ marginBottom: "0.5rem" }}>
+      <div
+        className="panel-heading panel-heading-compact panel"
+        style={{ marginBottom: "0.5rem" }}
+      >
         <div>
-          <span className="brand-kicker">Estructura jerarquica</span>
-          <h3>Dependencias de la estructura organizacional</h3>
+          <span className="brand-kicker">Árbol jerárquico</span>
+          <h3>Dependencias por tipo de proceso</h3>
         </div>
         <div className="actions">
-          <span className="pill">{maintenanceUnits.length} unidades visibles</span>
-          {hasPendingChanges ? <span className="pill pill-muted">Cambios pendientes</span> : null}
+          <span className="pill">{visibleDeps.length} dependencias</span>
         </div>
       </div>
 
-      <div className="catalog-tree">
-        {(childrenByParent["iess"] ?? [])
-          .filter(
-            (macro) =>
-              maintenanceUnitIds.has(macro.id) ||
-              hasVisibleDescendants(macro.id, childrenByParent, maintenanceUnitIds),
-          )
-          .map((macro) => {
-            const visibleChildren = (childrenByParent[macro.id] ?? []).filter(
-              (child) =>
-                maintenanceUnitIds.has(child.id) ||
-                hasVisibleDescendants(child.id, childrenByParent, maintenanceUnitIds),
-            );
-            return (
-              <MacroprocesoAccordion
-                key={macro.id}
-                unit={macro}
-                visibleChildren={visibleChildren}
-                childrenByParent={childrenByParent}
-                maintenanceUnitIds={maintenanceUnitIds}
-                ratRecords={ratRecords}
-                activityRecords={activityRecords}
-                pendingChangesById={pendingChangesById}
-                roleCapabilities={roleCapabilities}
-                forceOpen={hasActiveFilter}
-                onDetail={setActiveUnitId}
-                onQueueStatusChange={handleQueueStatusChange}
-              />
-            );
-          })}
-      </div>
+      {deleteError ? (
+        <div
+          className="panel"
+          style={{ background: "var(--color-danger-bg, #fef2f2)", marginBottom: "0.5rem" }}
+        >
+          <p style={{ color: "var(--color-danger, #dc2626)", margin: 0 }}>
+            {deleteError}{" "}
+            <button
+              type="button"
+              className="button-table-action button-table-action-secondary"
+              onClick={() => setDeleteError(null)}
+            >
+              Cerrar
+            </button>
+          </p>
+        </div>
+      ) : null}
 
-      {activeUnit ? (
-        <OrgUnitManagementModal
-          activityRecords={activityRecords}
-          children={childrenByParent[activeUnit.id] ?? []}
-          onApplyChanges={applyPendingChanges}
-          onClose={() => setActiveUnitId(null)}
-          onResetChanges={resetPendingChanges}
-          pendingChange={activeUnitPendingChange}
-          ratRecords={ratRecords}
-          roleCanEdit={roleCapabilities.organization.save}
-          unit={activeUnit}
-          unitsById={displayedUnitsById}
+      {depsQuery.isLoading ? (
+        <div className="panel">
+          <p className="page-copy">Cargando estructura organizacional…</p>
+        </div>
+      ) : grouped.length === 0 ? (
+        <div className="panel">
+          <p className="page-copy">
+            No se encontraron dependencias con los filtros actuales.
+          </p>
+        </div>
+      ) : (
+        <div className="catalog-tree">
+          {grouped.map(({ tipo, deps }) => (
+            <TipoProcesoGroup
+              key={tipo.id}
+              tipo={tipo}
+              dependencias={deps}
+              subsByDep={subsByDep}
+              canEdit={canEdit}
+              canToggle={canToggle}
+              confirmDeleteDep={confirmDeleteDep}
+              confirmDeleteSub={confirmDeleteSub}
+              onEditDep={(dep) => {
+                setDeleteError(null);
+                setDepModal({ mode: "edit", item: dep });
+              }}
+              onToggleDep={(dep) =>
+                saveDep.mutate({ id: dep.id, body: { activo: !dep.activo } })
+              }
+              onRequestDeleteDep={(id) => {
+                setDeleteError(null);
+                setConfirmDeleteDep(id);
+              }}
+              onCancelDeleteDep={() => setConfirmDeleteDep(null)}
+              onConfirmDeleteDep={(id) => deleteDep.mutate(id)}
+              onNewSub={(dep) => {
+                setDeleteError(null);
+                setSubModal({ mode: "create", parentDep: dep });
+              }}
+              onEditSub={(dep, sub) => {
+                setDeleteError(null);
+                setSubModal({ mode: "edit", parentDep: dep, item: sub });
+              }}
+              onToggleSub={(sub) =>
+                saveSub.mutate({ id: sub.id, body: { activo: !sub.activo } })
+              }
+              onRequestDeleteSub={(id) => {
+                setDeleteError(null);
+                setConfirmDeleteSub(id);
+              }}
+              onCancelDeleteSub={() => setConfirmDeleteSub(null)}
+              onConfirmDeleteSub={(id) => deleteSub.mutate(id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {depModal ? (
+        <DependenciaFormModal
+          tipos={tipos}
+          mode={depModal.mode}
+          item={depModal.item}
+          isLoading={saveDep.isPending}
+          error={(saveDep.error as Error | null)?.message}
+          onClose={() => setDepModal(null)}
+          onSubmit={(body) => saveDep.mutate({ id: depModal.item?.id, body })}
+        />
+      ) : null}
+
+      {subModal ? (
+        <SubdireccionFormModal
+          parentDep={subModal.parentDep}
+          mode={subModal.mode}
+          item={subModal.item}
+          isLoading={saveSub.isPending}
+          error={(saveSub.error as Error | null)?.message}
+          onClose={() => setSubModal(null)}
+          onSubmit={(body) => saveSub.mutate({ id: subModal.item?.id, body })}
         />
       ) : null}
     </section>
   );
 }
 
-function hasVisibleDescendants(
-  unitId: string,
-  childrenByParent: Record<string, OrgUnit[]>,
-  visibleIds: Set<string>,
-): boolean {
-  const children = childrenByParent[unitId] ?? [];
-  return children.some(
-    (child) => visibleIds.has(child.id) || hasVisibleDescendants(child.id, childrenByParent, visibleIds),
-  );
-}
+// ─── accordion por tipo de proceso ───────────────────────────────────────────
 
-function MacroprocesoAccordion({
-  unit,
-  visibleChildren,
-  childrenByParent,
-  maintenanceUnitIds,
-  ratRecords,
-  activityRecords,
-  pendingChangesById,
-  roleCapabilities,
-  forceOpen,
-  onDetail,
-  onQueueStatusChange,
+function TipoProcesoGroup({
+  tipo,
+  dependencias,
+  subsByDep,
+  canEdit,
+  canToggle,
+  confirmDeleteDep,
+  confirmDeleteSub,
+  onEditDep,
+  onToggleDep,
+  onRequestDeleteDep,
+  onCancelDeleteDep,
+  onConfirmDeleteDep,
+  onNewSub,
+  onEditSub,
+  onToggleSub,
+  onRequestDeleteSub,
+  onCancelDeleteSub,
+  onConfirmDeleteSub,
 }: {
-  unit: OrgUnit;
-  visibleChildren: OrgUnit[];
-  childrenByParent: Record<string, OrgUnit[]>;
-  maintenanceUnitIds: Set<string>;
-  ratRecords: BackendRat[];
-  activityRecords: BackendActivity[];
-  pendingChangesById: Record<string, PendingOrgUnitChange>;
-  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
-  forceOpen: boolean;
-  onDetail: (id: string) => void;
-  onQueueStatusChange: (unit: OrgUnit) => void;
+  tipo: TipoProceso;
+  dependencias: Dependencia[];
+  subsByDep: Map<number, Subdireccion[]>;
+  canEdit: boolean;
+  canToggle: boolean;
+  confirmDeleteDep: number | null;
+  confirmDeleteSub: number | null;
+  onEditDep: (dep: Dependencia) => void;
+  onToggleDep: (dep: Dependencia) => void;
+  onRequestDeleteDep: (id: number) => void;
+  onCancelDeleteDep: () => void;
+  onConfirmDeleteDep: (id: number) => void;
+  onNewSub: (dep: Dependencia) => void;
+  onEditSub: (dep: Dependencia, sub: Subdireccion) => void;
+  onToggleSub: (sub: Subdireccion) => void;
+  onRequestDeleteSub: (id: number) => void;
+  onCancelDeleteSub: () => void;
+  onConfirmDeleteSub: (id: number) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const isOpen = forceOpen || open;
-  const totalCount = visibleChildren.reduce(
-    (acc, child) => acc + 1 + (childrenByParent[child.id] ?? []).filter((gc) => maintenanceUnitIds.has(gc.id)).length,
-    0,
-  );
+  const [open, setOpen] = useState(true);
 
   return (
     <div className="catalog-accordion catalog-accordion-dominio">
       <button
         type="button"
         className="catalog-accordion-header"
-        aria-expanded={isOpen}
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="catalog-accordion-chevron">{isOpen ? "▾" : "▸"}</span>
-        <span className="catalog-accordion-label">{unit.nombre}</span>
-        <span className="pill catalog-accordion-count">{totalCount} dependencias</span>
-      </button>
-
-      {isOpen && (
-        <div className="catalog-accordion-body">
-          {visibleChildren.map((child) => {
-            const visibleGrandchildren = (childrenByParent[child.id] ?? []).filter((gc) =>
-              maintenanceUnitIds.has(gc.id),
-            );
-            return (
-              <DireccionAccordion
-                key={child.id}
-                unit={child}
-                visibleChildren={visibleGrandchildren}
-                ratRecords={ratRecords}
-                activityRecords={activityRecords}
-                pendingChangesById={pendingChangesById}
-                roleCapabilities={roleCapabilities}
-                forceOpen={forceOpen}
-                onDetail={onDetail}
-                onQueueStatusChange={onQueueStatusChange}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DireccionAccordion({
-  unit,
-  visibleChildren,
-  ratRecords,
-  activityRecords,
-  pendingChangesById,
-  roleCapabilities,
-  forceOpen,
-  onDetail,
-  onQueueStatusChange,
-}: {
-  unit: OrgUnit;
-  visibleChildren: OrgUnit[];
-  ratRecords: BackendRat[];
-  activityRecords: BackendActivity[];
-  pendingChangesById: Record<string, PendingOrgUnitChange>;
-  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
-  forceOpen: boolean;
-  onDetail: (id: string) => void;
-  onQueueStatusChange: (unit: OrgUnit) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const isOpen = forceOpen || open;
-  const hasChildren = visibleChildren.length > 0;
-  const linkedRats = countLinkedRats(unit, ratRecords);
-  const linkedActivities = countLinkedActivities(unit, activityRecords);
-  const hasPending = Boolean(pendingChangesById[unit.id]);
-
-  return (
-    <div className="catalog-accordion catalog-accordion-tipo">
-      <button
-        type="button"
-        className="catalog-accordion-header catalog-accordion-header-tipo"
-        aria-expanded={isOpen}
-        onClick={() => hasChildren && setOpen((v) => !v)}
-        style={hasChildren ? undefined : { cursor: "default" }}
-      >
-        {hasChildren ? (
-          <span className="catalog-accordion-chevron">{isOpen ? "▾" : "▸"}</span>
-        ) : (
-          <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
-        )}
-        {unit.sigla ? (
-          <span className="catalog-accordion-tipo-key">{unit.sigla}</span>
-        ) : null}
-        <span className="catalog-accordion-label">{unit.nombre}</span>
-        {hasChildren ? (
-          <span className="pill catalog-accordion-count">{visibleChildren.length} subdep.</span>
-        ) : null}
-        <span
-          className={
-            unit.status === "Activa"
-              ? "pill status-pill-vigente catalog-item-status"
-              : "pill status-pill-archivado catalog-item-status"
-          }
-        >
-          {unit.status}
+        <span className="catalog-accordion-chevron">{open ? "▾" : "▸"}</span>
+        <span className="catalog-accordion-label">{tipo.nombre}</span>
+        <span className="pill catalog-accordion-count">
+          {dependencias.length} dependencia
+          {dependencias.length !== 1 ? "s" : ""}
         </span>
-        <span className="catalog-item-desc">{linkedRats} RAT · {linkedActivities} act.</span>
-        {hasPending ? <small className="org-status-pending">Pendiente</small> : null}
-        <div className="catalog-item-actions">
-          <button
-            type="button"
-            className="button-table-action button-table-action-secondary"
-            onClick={(e) => { e.stopPropagation(); onDetail(unit.id); }}
-          >
-            Detalle
-          </button>
-          {roleCapabilities.organization.updateStatus ? (
-            <button
-              type="button"
-              className={
-                unit.status === "Activa"
-                  ? "button-table-action button-table-action-danger"
-                  : "button-table-action"
-              }
-              onClick={(e) => { e.stopPropagation(); onQueueStatusChange(unit); }}
-            >
-              {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
-            </button>
-          ) : null}
-        </div>
       </button>
 
-      {isOpen && hasChildren && (
-        <div className="catalog-accordion-body catalog-items-list">
-          {visibleChildren.map((child) => (
-            <OrgUnitLeafRow
-              key={child.id}
-              unit={child}
-              ratRecords={ratRecords}
-              activityRecords={activityRecords}
-              pendingChangesById={pendingChangesById}
-              roleCapabilities={roleCapabilities}
-              onDetail={onDetail}
-              onQueueStatusChange={onQueueStatusChange}
+      {open && (
+        <div className="catalog-accordion-body">
+          {dependencias.map((dep) => (
+            <DependenciaItem
+              key={dep.id}
+              dep={dep}
+              subdirecciones={subsByDep.get(dep.id) ?? []}
+              canEdit={canEdit}
+              canToggle={canToggle}
+              confirmDeleteDep={confirmDeleteDep}
+              confirmDeleteSub={confirmDeleteSub}
+              onEdit={() => onEditDep(dep)}
+              onToggle={() => onToggleDep(dep)}
+              onRequestDelete={() => onRequestDeleteDep(dep.id)}
+              onCancelDelete={onCancelDeleteDep}
+              onConfirmDelete={() => onConfirmDeleteDep(dep.id)}
+              onNewSub={() => onNewSub(dep)}
+              onEditSub={(sub) => onEditSub(dep, sub)}
+              onToggleSub={onToggleSub}
+              onRequestDeleteSub={onRequestDeleteSub}
+              onCancelDeleteSub={onCancelDeleteSub}
+              onConfirmDeleteSub={onConfirmDeleteSub}
             />
           ))}
         </div>
@@ -615,66 +537,274 @@ function DireccionAccordion({
   );
 }
 
-function OrgUnitLeafRow({
-  unit,
-  ratRecords,
-  activityRecords,
-  pendingChangesById,
-  roleCapabilities,
-  onDetail,
-  onQueueStatusChange,
+// ─── fila de dependencia ─────────────────────────────────────────────────────
+
+function DependenciaItem({
+  dep,
+  subdirecciones,
+  canEdit,
+  canToggle,
+  confirmDeleteDep,
+  confirmDeleteSub,
+  onEdit,
+  onToggle,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+  onNewSub,
+  onEditSub,
+  onToggleSub,
+  onRequestDeleteSub,
+  onCancelDeleteSub,
+  onConfirmDeleteSub,
 }: {
-  unit: OrgUnit;
-  ratRecords: BackendRat[];
-  activityRecords: BackendActivity[];
-  pendingChangesById: Record<string, PendingOrgUnitChange>;
-  roleCapabilities: ReturnType<typeof getRoleCapabilities>;
-  onDetail: (id: string) => void;
-  onQueueStatusChange: (unit: OrgUnit) => void;
+  dep: Dependencia;
+  subdirecciones: Subdireccion[];
+  canEdit: boolean;
+  canToggle: boolean;
+  confirmDeleteDep: number | null;
+  confirmDeleteSub: number | null;
+  onEdit: () => void;
+  onToggle: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+  onNewSub: () => void;
+  onEditSub: (sub: Subdireccion) => void;
+  onToggleSub: (sub: Subdireccion) => void;
+  onRequestDeleteSub: (id: number) => void;
+  onCancelDeleteSub: () => void;
+  onConfirmDeleteSub: (id: number) => void;
 }) {
-  const linkedRats = countLinkedRats(unit, ratRecords);
-  const linkedActivities = countLinkedActivities(unit, activityRecords);
-  const hasPending = Boolean(pendingChangesById[unit.id]);
+  const [open, setOpen] = useState(false);
+  const hasSubs = subdirecciones.length > 0;
+  const isConfirming = confirmDeleteDep === dep.id;
 
   return (
-    <div className="catalog-item-wrapper">
-      <div className={`catalog-item-row ${unit.status === "Activa" ? "" : "catalog-item-inactive"}`}>
-        <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
+    <div className="catalog-accordion catalog-accordion-tipo">
+      <button
+        type="button"
+        className="catalog-accordion-header catalog-accordion-header-tipo"
+        aria-expanded={open}
+        onClick={() => hasSubs && setOpen((v) => !v)}
+        style={hasSubs ? undefined : { cursor: "default" }}
+      >
+        {hasSubs ? (
+          <span className="catalog-accordion-chevron">{open ? "▾" : "▸"}</span>
+        ) : (
+          <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
+        )}
+        {dep.sigla ? (
+          <span className="catalog-accordion-tipo-key">{dep.sigla}</span>
+        ) : null}
+        <span className="catalog-accordion-label">{dep.nombre}</span>
+        {hasSubs ? (
+          <span className="pill catalog-accordion-count">
+            {subdirecciones.length} subdir.
+          </span>
+        ) : null}
         <span
           className={
-            unit.status === "Activa"
+            dep.activo
               ? "pill status-pill-vigente catalog-item-status"
               : "pill status-pill-archivado catalog-item-status"
           }
         >
-          {unit.status}
+          {dep.activo ? "Activa" : "Inactiva"}
         </span>
-        <span className="catalog-item-name">{unit.nombre}</span>
-        {unit.sigla ? <span className="catalog-item-code">{unit.sigla}</span> : null}
-        <span className="catalog-item-desc">{linkedRats} RAT · {linkedActivities} act.</span>
-        {hasPending ? <small className="org-status-pending">Pendiente</small> : null}
-        <div className="catalog-item-actions">
-          <button
-            type="button"
-            className="button-table-action button-table-action-secondary"
-            onClick={() => onDetail(unit.id)}
-          >
-            Detalle
-          </button>
-          {roleCapabilities.organization.updateStatus ? (
-            <button
-              type="button"
-              className={
-                unit.status === "Activa"
-                  ? "button-table-action button-table-action-danger"
-                  : "button-table-action"
-              }
-              onClick={() => onQueueStatusChange(unit)}
-            >
-              {unit.status === "Activa" ? "Deshabilitar" : "Habilitar"}
-            </button>
+        <span className="catalog-item-desc">
+          {dep._count.rats} RAT · {dep._count.subdirecciones} subdir.
+          {dep.responsable ? ` · ${dep.responsable}` : ""}
+        </span>
+
+        <div className="catalog-item-actions" onClick={(e) => e.stopPropagation()}>
+          {isConfirming ? (
+            <>
+              <span className="catalog-item-desc">¿Confirmar eliminación?</span>
+              <button
+                type="button"
+                className="button-table-action button-table-action-danger"
+                onClick={onConfirmDelete}
+              >
+                Eliminar
+              </button>
+              <button
+                type="button"
+                className="button-table-action button-table-action-secondary"
+                onClick={onCancelDelete}
+              >
+                Cancelar
+              </button>
+            </>
           ) : (
-            <span className="selection-action-empty">Solo lectura</span>
+            <>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="button-table-action button-table-action-secondary"
+                  onClick={onEdit}
+                >
+                  Editar
+                </button>
+              ) : null}
+              {canToggle ? (
+                <button
+                  type="button"
+                  className={
+                    dep.activo
+                      ? "button-table-action button-table-action-danger"
+                      : "button-table-action"
+                  }
+                  onClick={onToggle}
+                >
+                  {dep.activo ? "Desactivar" : "Activar"}
+                </button>
+              ) : null}
+              {canEdit ? (
+                <>
+                  <button
+                    type="button"
+                    className="button-table-action"
+                    onClick={onNewSub}
+                  >
+                    + Subdir.
+                  </button>
+                  <button
+                    type="button"
+                    className="button-table-action button-table-action-danger"
+                    onClick={onRequestDelete}
+                  >
+                    Eliminar
+                  </button>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+      </button>
+
+      {open && hasSubs && (
+        <div className="catalog-accordion-body catalog-items-list">
+          {subdirecciones.map((sub) => (
+            <SubdireccionItem
+              key={sub.id}
+              sub={sub}
+              canEdit={canEdit}
+              canToggle={canToggle}
+              isConfirming={confirmDeleteSub === sub.id}
+              onEdit={() => onEditSub(sub)}
+              onToggle={() => onToggleSub(sub)}
+              onRequestDelete={() => onRequestDeleteSub(sub.id)}
+              onCancelDelete={onCancelDeleteSub}
+              onConfirmDelete={() => onConfirmDeleteSub(sub.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── fila de subdireccion ─────────────────────────────────────────────────────
+
+function SubdireccionItem({
+  sub,
+  canEdit,
+  canToggle,
+  isConfirming,
+  onEdit,
+  onToggle,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  sub: Subdireccion;
+  canEdit: boolean;
+  canToggle: boolean;
+  isConfirming: boolean;
+  onEdit: () => void;
+  onToggle: () => void;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
+  return (
+    <div className="catalog-item-wrapper">
+      <div
+        className={`catalog-item-row ${sub.activo ? "" : "catalog-item-inactive"}`}
+      >
+        <span className="catalog-item-toggle catalog-item-toggle-leaf">·</span>
+        <span
+          className={
+            sub.activo
+              ? "pill status-pill-vigente catalog-item-status"
+              : "pill status-pill-archivado catalog-item-status"
+          }
+        >
+          {sub.activo ? "Activa" : "Inactiva"}
+        </span>
+        <span className="catalog-item-name">{sub.nombre}</span>
+        {sub.sigla ? (
+          <span className="catalog-item-code">{sub.sigla}</span>
+        ) : null}
+        <span className="catalog-item-desc">
+          {sub._count.rats} RAT
+          {sub.responsable ? ` · ${sub.responsable}` : ""}
+        </span>
+
+        <div className="catalog-item-actions">
+          {isConfirming ? (
+            <>
+              <span className="catalog-item-desc">¿Confirmar?</span>
+              <button
+                type="button"
+                className="button-table-action button-table-action-danger"
+                onClick={onConfirmDelete}
+              >
+                Sí, eliminar
+              </button>
+              <button
+                type="button"
+                className="button-table-action button-table-action-secondary"
+                onClick={onCancelDelete}
+              >
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="button-table-action button-table-action-secondary"
+                  onClick={onEdit}
+                >
+                  Editar
+                </button>
+              ) : null}
+              {canToggle ? (
+                <button
+                  type="button"
+                  className={
+                    sub.activo
+                      ? "button-table-action button-table-action-danger"
+                      : "button-table-action"
+                  }
+                  onClick={onToggle}
+                >
+                  {sub.activo ? "Desactivar" : "Activar"}
+                </button>
+              ) : null}
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="button-table-action button-table-action-danger"
+                  onClick={onRequestDelete}
+                >
+                  Eliminar
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </div>
@@ -682,50 +812,43 @@ function OrgUnitLeafRow({
   );
 }
 
-function OrgUnitManagementModal({
-  activityRecords,
-  children,
-  onApplyChanges,
+// ─── modal de dependencia ─────────────────────────────────────────────────────
+
+function DependenciaFormModal({
+  tipos,
+  mode,
+  item,
+  isLoading,
+  error,
   onClose,
-  onResetChanges,
-  pendingChange,
-  ratRecords,
-  roleCanEdit,
-  unit,
-  unitsById,
+  onSubmit,
 }: {
-  activityRecords: BackendActivity[];
-  children: OrgUnit[];
-  onApplyChanges: (unitId: string, changes: PendingOrgUnitChange) => void;
+  tipos: TipoProceso[];
+  mode: "create" | "edit";
+  item?: Dependencia;
+  isLoading: boolean;
+  error?: string | null;
   onClose: () => void;
-  onResetChanges: (unitId: string) => void;
-  pendingChange?: PendingOrgUnitChange;
-  ratRecords: BackendRat[];
-  roleCanEdit: boolean;
-  unit: OrgUnit;
-  unitsById: Record<string, OrgUnit>;
+  onSubmit: (body: Record<string, unknown>) => void;
 }) {
-  const linkedRats = countLinkedRats(unit, ratRecords);
-  const linkedActivities = countLinkedActivities(unit, activityRecords);
-  const [draftName, setDraftName] = useState(unit.nombre);
-  const [draftSigla, setDraftSigla] = useState(unit.sigla ?? "");
-  const [draftOwnerRole, setDraftOwnerRole] = useState(unit.ownerRole);
-  const hasUnitPendingChanges = Boolean(pendingChange);
-  const isApplyDisabled = draftName.trim().length === 0 || draftOwnerRole.trim().length === 0;
+  const [form, setForm] = useState<DepFormState>({
+    nombre: item?.nombre ?? "",
+    sigla: item?.sigla ?? "",
+    responsable: item?.responsable ?? "",
+    descripcion: item?.descripcion ?? "",
+    tipoProcesoId: item?.tipoProceso.id ?? "",
+  });
 
-  useEffect(() => {
-    setDraftName(unit.nombre);
-    setDraftSigla(unit.sigla ?? "");
-    setDraftOwnerRole(unit.ownerRole);
-  }, [unit.id, unit.nombre, unit.ownerRole, unit.sigla]);
-
-  function handleApply() {
-    onApplyChanges(unit.id, {
-      nombre: draftName,
-      sigla: draftSigla,
-      ownerRole: draftOwnerRole,
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!form.tipoProcesoId || !form.nombre.trim()) return;
+    onSubmit({
+      nombre: form.nombre.trim(),
+      sigla: form.sigla.trim() || undefined,
+      responsable: form.responsable.trim() || undefined,
+      descripcion: form.descripcion.trim() || undefined,
+      tipoProcesoId: Number(form.tipoProcesoId),
     });
-    onClose();
   }
 
   return (
@@ -733,270 +856,289 @@ function OrgUnitManagementModal({
       className="report-preview-modal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="organization-unit-detail-title"
+      aria-labelledby="dep-form-title"
     >
       <button
         type="button"
         className="report-preview-modal-backdrop"
-        aria-label="Cerrar gestion de dependencia"
+        aria-label="Cerrar"
         onClick={onClose}
       />
-
       <div className="report-preview-modal-dialog org-detail-modal">
         <header className="report-preview-modal-header">
           <div>
-            <span className="brand-kicker">Gestion de dependencia</span>
-            <div className="page-title-with-icon page-title-with-icon-modal">
-              <span className="page-title-icon">
-                <AppIcon name="organization" size={20} strokeWidth={2.1} />
-              </span>
-              <h3 id="organization-unit-detail-title">{unit.nombre}</h3>
-            </div>
-            <p className="page-copy">
-              Revise impacto y edite los datos maestros. La persistencia final se confirma desde la
-              tabla principal con el guardado global.
-            </p>
+            <span className="brand-kicker">Estructura organizacional</span>
+            <h3 id="dep-form-title">
+              {mode === "create" ? "Nueva dependencia" : "Editar dependencia"}
+            </h3>
           </div>
-
           <div className="report-preview-modal-actions">
             <button type="button" className="button-secondary" onClick={onClose}>
-              Cerrar
+              Cancelar
             </button>
           </div>
         </header>
 
         <div className="report-preview-modal-body">
-          <div className="org-detail-modal-grid">
-            <div className="detail-block">
-              <h4>Identidad organizacional</h4>
-              <dl className="detail-grid">
-                <div>
-                  <dt>Estado actual</dt>
-                  <dd>{unit.status}</dd>
-                </div>
-                <div>
-                  <dt>Tipo</dt>
-                  <dd>{unit.tipo}</dd>
-                </div>
-                <div>
-                  <dt>Padre</dt>
-                  <dd>{unit.parentId ? unitsById[unit.parentId]?.nombre ?? "N/A" : "Raiz"}</dd>
-                </div>
-                <div>
-                  <dt>Jerarquia</dt>
-                  <dd>{getHierarchyLabel(unit, unitsById)}</dd>
-                </div>
-              </dl>
-            </div>
+          <form onSubmit={handleSubmit}>
+            <div className="detail-form-grid">
+              <label className="field detail-form-span">
+                <span>Nombre *</span>
+                <input
+                  className="input"
+                  value={form.nombre}
+                  onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+                  required
+                />
+              </label>
 
-            <div className="detail-block">
-              <h4>Impacto operativo</h4>
-              <dl className="detail-grid">
-                <div>
-                  <dt>RAT vinculados</dt>
-                  <dd>{linkedRats}</dd>
-                </div>
-                <div>
-                  <dt>Actividades vinculadas</dt>
-                  <dd>{linkedActivities}</dd>
-                </div>
-                <div>
-                  <dt>Dependencias hijas</dt>
-                  <dd>{children.length}</dd>
-                </div>
-                <div>
-                  <dt>Resultado esperado</dt>
-                  <dd>{hasUnitPendingChanges ? "Cambios pendientes de guardar" : "Sin cambios pendientes"}</dd>
-                </div>
-              </dl>
-            </div>
+              <label className="field">
+                <span>Sigla</span>
+                <input
+                  className="input"
+                  value={form.sigla}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sigla: e.target.value.toUpperCase() }))
+                  }
+                  placeholder="Ej. DSGSIF"
+                />
+              </label>
 
-            {children.length > 0 ? (
-              <div className="detail-block">
-                <h4>Dependencias hijas</h4>
-                <div className="org-chip-grid">
-                  {children.map((child) => (
-                    <article key={child.id} className="org-chip-card org-chip-card-static">
-                      <strong>{child.nombre}</strong>
-                      <span>
-                        {child.sigla ?? "Sigla pendiente"} · {child.tipo}
-                      </span>
-                    </article>
+              <label className="field">
+                <span>Responsable</span>
+                <input
+                  className="input"
+                  value={form.responsable}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, responsable: e.target.value }))
+                  }
+                  placeholder="Cargo o nombre del responsable"
+                />
+              </label>
+
+              <label className="field detail-form-span">
+                <span>Tipo de proceso *</span>
+                <select
+                  className="input"
+                  value={form.tipoProcesoId}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      tipoProcesoId: e.target.value ? Number(e.target.value) : "",
+                    }))
+                  }
+                  required
+                >
+                  <option value="">Seleccionar tipo…</option>
+                  {tipos.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombre}
+                    </option>
                   ))}
-                </div>
-              </div>
+                </select>
+              </label>
+
+              <label className="field detail-form-span">
+                <span>Descripción</span>
+                <textarea
+                  className="input"
+                  value={form.descripcion}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, descripcion: e.target.value }))
+                  }
+                  rows={3}
+                  placeholder="Descripción funcional de la dependencia"
+                />
+              </label>
+            </div>
+
+            {error ? (
+              <p
+                style={{
+                  color: "var(--color-danger, #dc2626)",
+                  marginTop: "0.75rem",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {error}
+              </p>
             ) : null}
 
-            <div className="detail-block">
-              <h4>Edicion del maestro</h4>
-              <div className="detail-form-grid">
-                <label className="field">
-                  <span>Nombre de la dependencia</span>
-                  <input
-                    className="input"
-                    value={draftName}
-                    onChange={(event) => setDraftName(event.target.value)}
-                    disabled={!roleCanEdit}
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Sigla</span>
-                  <input
-                    className="input"
-                    value={draftSigla}
-                    onChange={(event) => setDraftSigla(event.target.value.toUpperCase())}
-                    disabled={!roleCanEdit}
-                    placeholder="Ej. DSGSIF"
-                  />
-                </label>
-
-                <label className="field detail-form-span">
-                  <span>Responsable referencial</span>
-                  <input
-                    className="input"
-                    value={draftOwnerRole}
-                    onChange={(event) => setDraftOwnerRole(event.target.value)}
-                    disabled={!roleCanEdit}
-                  />
-                </label>
-              </div>
-
-              <div className="activity-action-modal-actions">
-                {hasUnitPendingChanges ? (
-                  <button
-                    type="button"
-                    className="button-table-action button-table-action-secondary"
-                    onClick={() => {
-                      onResetChanges(unit.id);
-                      onClose();
-                    }}
-                  >
-                    Descartar cambios de esta dependencia
-                  </button>
-                ) : null}
-                {roleCanEdit ? (
-                  <button
-                    type="button"
-                    className="button-table-action"
-                    disabled={isApplyDisabled}
-                    onClick={handleApply}
-                  >
-                    Aplicar cambios
-                  </button>
-                ) : null}
-              </div>
-              <p className="selection-action-empty">
-                La deshabilitacion se realiza desde la tabla principal. Este modal se reserva para
-                revisar impacto y ajustar los datos maestros.
-              </p>
+            <div
+              className="activity-action-modal-actions"
+              style={{ marginTop: "1rem" }}
+            >
+              <button
+                type="submit"
+                className="button-primary"
+                disabled={
+                  isLoading || !form.nombre.trim() || !form.tipoProcesoId
+                }
+              >
+                {isLoading
+                  ? "Guardando…"
+                  : mode === "create"
+                    ? "Crear dependencia"
+                    : "Guardar cambios"}
+              </button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>
   );
 }
 
-function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
+// ─── modal de subdireccion ────────────────────────────────────────────────────
 
-function isMatch(unit: OrgUnit, normalizedSearch: string) {
-  return normalize([unit.nombre, unit.sigla, unit.tipo].filter(Boolean).join(" ")).includes(
-    normalizedSearch,
+function SubdireccionFormModal({
+  parentDep,
+  mode,
+  item,
+  isLoading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  parentDep: Dependencia;
+  mode: "create" | "edit";
+  item?: Subdireccion;
+  isLoading: boolean;
+  error?: string | null;
+  onClose: () => void;
+  onSubmit: (body: Record<string, unknown>) => void;
+}) {
+  const [form, setForm] = useState<SubFormState>({
+    nombre: item?.nombre ?? "",
+    sigla: item?.sigla ?? "",
+    responsable: item?.responsable ?? "",
+    descripcion: item?.descripcion ?? "",
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!form.nombre.trim()) return;
+    onSubmit({
+      nombre: form.nombre.trim(),
+      sigla: form.sigla.trim() || undefined,
+      responsable: form.responsable.trim() || undefined,
+      descripcion: form.descripcion.trim() || undefined,
+      dependenciaId: parentDep.id,
+    });
+  }
+
+  return (
+    <div
+      className="report-preview-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sub-form-title"
+    >
+      <button
+        type="button"
+        className="report-preview-modal-backdrop"
+        aria-label="Cerrar"
+        onClick={onClose}
+      />
+      <div className="report-preview-modal-dialog org-detail-modal">
+        <header className="report-preview-modal-header">
+          <div>
+            <span className="brand-kicker">
+              {parentDep.sigla ?? parentDep.nombre}
+            </span>
+            <h3 id="sub-form-title">
+              {mode === "create" ? "Nueva subdireccion" : "Editar subdireccion"}
+            </h3>
+          </div>
+          <div className="report-preview-modal-actions">
+            <button type="button" className="button-secondary" onClick={onClose}>
+              Cancelar
+            </button>
+          </div>
+        </header>
+
+        <div className="report-preview-modal-body">
+          <form onSubmit={handleSubmit}>
+            <div className="detail-form-grid">
+              <label className="field detail-form-span">
+                <span>Nombre *</span>
+                <input
+                  className="input"
+                  value={form.nombre}
+                  onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+                  required
+                />
+              </label>
+
+              <label className="field">
+                <span>Sigla</span>
+                <input
+                  className="input"
+                  value={form.sigla}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sigla: e.target.value.toUpperCase() }))
+                  }
+                  placeholder="Ej. SDTI"
+                />
+              </label>
+
+              <label className="field">
+                <span>Responsable</span>
+                <input
+                  className="input"
+                  value={form.responsable}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, responsable: e.target.value }))
+                  }
+                  placeholder="Cargo o nombre"
+                />
+              </label>
+
+              <label className="field detail-form-span">
+                <span>Descripción</span>
+                <textarea
+                  className="input"
+                  value={form.descripcion}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, descripcion: e.target.value }))
+                  }
+                  rows={2}
+                  placeholder="Descripción de la subdireccion"
+                />
+              </label>
+            </div>
+
+            {error ? (
+              <p
+                style={{
+                  color: "var(--color-danger, #dc2626)",
+                  marginTop: "0.75rem",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {error}
+              </p>
+            ) : null}
+
+            <div
+              className="activity-action-modal-actions"
+              style={{ marginTop: "1rem" }}
+            >
+              <button
+                type="submit"
+                className="button-primary"
+                disabled={isLoading || !form.nombre.trim()}
+              >
+                {isLoading
+                  ? "Guardando…"
+                  : mode === "create"
+                    ? "Crear subdireccion"
+                    : "Guardar cambios"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
-}
-
-function getOrgTypes(units: OrgUnit[]) {
-  return Array.from(new Set(units.map((unit) => unit.tipo))).sort();
-}
-
-function getHierarchyLabel(unit: OrgUnit, unitsById: Record<string, OrgUnit>) {
-  const chain: string[] = [];
-  let current: OrgUnit | undefined = unit;
-
-  while (current) {
-    chain.unshift(current.nombre);
-    current = current.parentId ? unitsById[current.parentId] : undefined;
-  }
-
-  return chain.join(" / ");
-}
-
-function countLinkedRats(unit: OrgUnit, ratRecords: BackendRat[]) {
-  return ratRecords.filter(
-    (rat) =>
-      rat.dependencia.nombre === unit.nombre ||
-      (unit.sigla && rat.dependencia.sigla === unit.sigla),
-  ).length;
-}
-
-function countLinkedActivities(unit: OrgUnit, activityRecords: BackendActivity[]) {
-  return activityRecords.filter(
-    (activity) =>
-      activity.dependencia === unit.nombre ||
-      activity.subdireccion === unit.nombre,
-  ).length;
-}
-
-function mergeUnitWithPendingChange(unit: OrgUnit, change?: PendingOrgUnitChange): OrgUnit {
-  if (!change) {
-    return unit;
-  }
-
-  return {
-    ...unit,
-    ...change,
-    nombre: change.nombre !== undefined ? normalizeText(change.nombre) : unit.nombre,
-    sigla: change.sigla !== undefined ? normalizeOptionalText(change.sigla) : unit.sigla,
-    ownerRole: change.ownerRole !== undefined ? normalizeText(change.ownerRole) : unit.ownerRole,
-    status: change.status ?? unit.status,
-  };
-}
-
-function getNormalizedPendingChange(
-  originalUnit: OrgUnit,
-  draft: PendingOrgUnitChange,
-): PendingOrgUnitChange | null {
-  const next: PendingOrgUnitChange = {};
-
-  if (draft.nombre !== undefined) {
-    const normalizedName = normalizeText(draft.nombre);
-    if (normalizedName !== originalUnit.nombre) {
-      next.nombre = normalizedName;
-    }
-  }
-
-  if (draft.sigla !== undefined) {
-    const normalizedSigla = normalizeOptionalText(draft.sigla);
-    if ((normalizedSigla ?? "") !== (originalUnit.sigla ?? "")) {
-      next.sigla = normalizedSigla;
-    }
-  }
-
-  if (draft.ownerRole !== undefined) {
-    const normalizedOwner = normalizeText(draft.ownerRole);
-    if (normalizedOwner !== originalUnit.ownerRole) {
-      next.ownerRole = normalizedOwner;
-    }
-  }
-
-  if (draft.status !== undefined && draft.status !== originalUnit.status) {
-    next.status = draft.status;
-  }
-
-  return Object.keys(next).length > 0 ? next : null;
-}
-
-function normalizeText(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function normalizeOptionalText(value?: string) {
-  const normalized = normalizeText(value ?? "");
-  return normalized.length > 0 ? normalized : undefined;
 }

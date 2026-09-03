@@ -164,6 +164,34 @@ export class SubdireccionesService {
     return { data };
   }
 
+  async delete(id: number, actor: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
+    const current = await this.ensureExists(id);
+
+    const ratCount = await this.prisma.rat.count({ where: { subdireccionId: id } });
+    if (ratCount > 0) {
+      throw new UnprocessableEntityException(
+        `No es posible eliminar: la subdireccion tiene ${ratCount} RAT(s) registrado(s). Desactive la subdireccion en su lugar.`,
+      );
+    }
+
+    const data = await this.prisma.$transaction(async (tx) => {
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgSubdireccion',
+        entidadId: id,
+        accion: 'DELETE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Eliminacion de subdireccion',
+        beforeData: current,
+      });
+      return tx.orgSubdireccion.delete({ where: { id } });
+    });
+
+    return { data };
+  }
+
   async findRats(id: number, actor: AuthenticatedUser) {
     const subdireccion = await this.ensureExists(id);
     this.authz.assertCanUseDependencia(actor, subdireccion.dependenciaId);

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -58,6 +59,14 @@ export class DependenciasController {
     @Body() dto: UpdateDependenciaDto,
   ) {
     return this.dependenciasService.update(id, dto, user);
+  }
+
+  @Delete(':id')
+  delete(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.dependenciasService.delete(id, user);
   }
 
   @Get(':id/subdirecciones')

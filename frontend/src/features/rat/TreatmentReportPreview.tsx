@@ -159,7 +159,7 @@ export function TreatmentReportPreview({
                 rows={[
                   { label: "Finalidad específica", value: report.finalidadEspecifica },
                   { label: "Base de licitud", value: report.baseLicitud },
-                  { label: "Norma aplicable", value: report.normaAplicable },
+                  { label: "Descripción Base Legitimadora", value: report.normaAplicable },
                 ]}
               />
             </ReportSection>
@@ -328,8 +328,11 @@ function ReportFieldTable({ rows }: { rows: RptRow[] }) {
 }
 
 function RptCell({ text }: { text: string }) {
+  if (text.includes("\n")) {
+    return <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.6" }}>{text}</div>;
+  }
   const parts = text
-    .split(/\s*[;\n]\s*/)
+    .split(/\s*;\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
   if (parts.length > 1) {
@@ -440,6 +443,17 @@ function fmtVal(value: ReportValue): string {
   return text.length > 0 ? text : "No documentado";
 }
 
+function fmtHtml(value: ReportValue): string {
+  const text = fmtVal(value);
+  if (text === "No documentado")
+    return `<em style="color:#94a3b8">No documentado</em>`;
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return escaped.replace(/\n\n+/g, "<br><br>").replace(/\n/g, "<br>");
+}
+
 // ─── print document (standalone HTML via buildInstitutionalReport) ────────────
 
 /**
@@ -466,10 +480,11 @@ export function buildReportDocument(
   const eipdRequired = activity?.requiereEipd ?? report.requiereEipd;
 
   const fv = (v: ReportValue) => fmtVal(v);
+  const fh = (v: ReportValue) => fmtHtml(v);
   const fieldTable = (rows: Array<{ label: string; value: ReportValue }>) =>
     rptTable(
       ["Campo", "Valor"],
-      rows.map((r) => [r.label, fv(r.value)]),
+      rows.map((r) => [r.label, fh(r.value)]),
       ["35%", "65%"],
     );
 
@@ -520,7 +535,7 @@ export function buildReportDocument(
         html: fieldTable([
           { label: "Finalidad específica", value: report.finalidadEspecifica },
           { label: "Base de licitud", value: report.baseLicitud },
-          { label: "Norma aplicable", value: report.normaAplicable },
+          { label: "Descripción Base Legitimadora", value: report.normaAplicable },
         ]),
       },
       {

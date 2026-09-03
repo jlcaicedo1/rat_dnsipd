@@ -198,6 +198,43 @@ export class DependenciasService {
     return { data };
   }
 
+  async delete(id: number, actor: AuthenticatedUser) {
+    this.authz.assertCanAdministerOrganization(actor);
+    const current = await this.ensureExists(id);
+
+    const subdirCount = await this.prisma.orgSubdireccion.count({
+      where: { dependenciaId: id },
+    });
+    if (subdirCount > 0) {
+      throw new UnprocessableEntityException(
+        `No es posible eliminar: la dependencia tiene ${subdirCount} subdirección(es) asociada(s). Elimínelas primero o desactive la dependencia.`,
+      );
+    }
+
+    const ratCount = await this.prisma.rat.count({ where: { dependenciaId: id } });
+    if (ratCount > 0) {
+      throw new UnprocessableEntityException(
+        `No es posible eliminar: la dependencia tiene ${ratCount} RAT(s) registrado(s). Desactive la dependencia en su lugar.`,
+      );
+    }
+
+    const data = await this.prisma.$transaction(async (tx) => {
+      await this.audit.log(tx, {
+        modulo: 'estructura-organica',
+        entidad: 'OrgDependencia',
+        entidadId: id,
+        accion: 'DELETE',
+        actor: actor?.username,
+        actorRole: actor?.role,
+        descripcion: 'Eliminacion de dependencia',
+        beforeData: current,
+      });
+      return tx.orgDependencia.delete({ where: { id } });
+    });
+
+    return { data };
+  }
+
   private async ensureExists(id: number) {
     const entity = await this.prisma.orgDependencia.findUnique({ where: { id } });
 
